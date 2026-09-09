@@ -74,7 +74,7 @@ type PrintRequest = {
 const RARITY_LABELS = ["Common", "Rare", "Epic", "Legendary"];
 const EXPLORER_TX = "https://testnet.monadvision.com/tx/";
 const EXPLORER_TOKEN = "https://testnet.monadvision.com/nft/";
-const CONTRACT_ADDR = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x3E1Cf18D6b94A4aCC438176b87E1387280aC87d4").trim();
+const CONTRACT_ADDR = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x712b70CbD3854A11f18839068483114D0068b4FC").trim();
 
 type PendingCard = {
   cardId: string | null;
