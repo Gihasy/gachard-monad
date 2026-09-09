@@ -8,7 +8,7 @@ Monad's high throughput (~10,000 TPS) and low latency (~1s block time) make it i
 
 - **App**: https://gachard-monad.vercel.app
 - **Admin Console**: https://gachard-monad.vercel.app/admin
-- **Smart Contract**: [0x712b70CbD3854A11f18839068483114D0068b4FC](https://testnet.monadexplorer.com/address/0x712b70CbD3854A11f18839068483114D0068b4FC) (verified on Sourcify)
+- **Smart Contract**: [0x712b70CbD3854A11f18839068483114D0068b4FC](https://testnet.monadvision.com/address/0x712b70CbD3854A11f18839068483114D0068b4FC) (verified on Sourcify)
 
 ## Features
 
@@ -152,9 +152,9 @@ cd frontend && npx tsx scripts/clean-slate.ts
 ## Blockchain Verification
 
 All blockchain transactions are verifiable on Monad Explorer:
-- **Smart Contract**: [0x712b70CbD3854A11f18839068483114D0068b4FC](https://testnet.monadexplorer.com/address/0x712b70CbD3854A11f18839068483114D0068b4FC)
+- **Smart Contract**: [0x712b70CbD3854A11f18839068483114D0068b4FC](https://testnet.monadvision.com/address/0x712b70CbD3854A11f18839068483114D0068b4FC)
 - **Chain**: Monad Testnet (Chain ID 10143)
-- **Explorer**: https://testnet.monadexplorer.com
+- **Explorer**: https://testnet.monadvision.com
 - **Verification**: Sourcify exact_match ✅
 
 Admin Console displays:
