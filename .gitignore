@@ -1,0 +1,78 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Foundry
+contracts/out/
+contracts/broadcast/
+contracts/cache/
+contracts/lib/
+
+# Next.js
+.next/
+out/
+
+# Vercel
+.vercel
+
+# OS
+.DS_Store
+Thumbs.db
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
+.env*
+
+# Tool-specific folders
+.mimo/
+.mimocode/
+.commandcode/
+
+# Internal docs & dev tools (not for submission)
+docs/archive/
+docs/screenshots/
+docs/00-project-overview.md
+docs/SETUP-MONGODB-ATLAS.md
+sprints/
+test_reports/
+memory/
+LAPORAN_AKHIR.md
+MEMORY.md
+DECISIONS.md
+PRD-Gachard-Hackathon.md
+CLAUDE.md
+.gitconfig
+.github/
+
+# Deployment scripts (local only)
+deploy-auto.bat
+deploy.bat
+scripts/deploy-monad.sh
+scripts/deploy-with-new-wallet.mjs
+scripts/run-clean-slate.sh
+scripts/check-contract.js
+scripts/.wallet.json
+scripts/.mongodb-url
+frontend/compile-and-deploy.mjs
+frontend/AGENTS.md
+frontend/CLAUDE.md
+
+# Default Next.js SVGs (not used)
+frontend/public/file.svg
+frontend/public/globe.svg
+frontend/public/next.svg
+frontend/public/vercel.svg
+frontend/public/window.svg
+
+# Session reports
+docs/SESSION-REPORT*.md
+
+# Media files
+*.mp4
+*.mov
