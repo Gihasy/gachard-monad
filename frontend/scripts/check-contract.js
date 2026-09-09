@@ -4,7 +4,7 @@ const { ethers } = require('ethers');
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || '0x...';
 
 // RPC URL
-const RPC_URL = process.env.RPC_URL || 'https://rpc.testnet.monad.xyz';
+const RPC_URL = process.env.RPC_URL || 'https://testnet-rpc.monad.xyz';
 
 // Minimal ABI
 const ABI = [

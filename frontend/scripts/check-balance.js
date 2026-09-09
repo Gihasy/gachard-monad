@@ -4,7 +4,7 @@ const { ethers } = require('ethers');
 const ADMIN_WALLET = process.env.ADMIN_WALLET_ADDRESS || '0x...';
 
 // RPC URL
-const RPC_URL = process.env.RPC_URL || 'https://rpc.testnet.monad.xyz';
+const RPC_URL = process.env.RPC_URL || 'https://testnet-rpc.monad.xyz';
 
 async function main() {
   try {

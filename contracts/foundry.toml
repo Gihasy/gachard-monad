@@ -7,4 +7,4 @@ evm_version = "cancun"
 use_literal_content = true
 
 [rpc_endpoints]
-monad_testnet = "https://rpc.testnet.monad.xyz"
+monad_testnet = "https://testnet-rpc.monad.xyz"
