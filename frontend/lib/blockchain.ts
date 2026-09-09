@@ -7,6 +7,28 @@ console.log("[blockchain] RPC_URL:", RPC_URL);
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
 
+// Nonce manager to prevent nonce collisions with concurrent transactions
+let currentNonce: number | null = null;
+let nonceLock = false;
+
+async function acquireNonce(provider: ethers.JsonRpcProvider, address: string): Promise<number> {
+  // Wait for lock to release
+  while (nonceLock) {
+    await new Promise(r => setTimeout(r, 50));
+  }
+  nonceLock = true;
+  try {
+    if (currentNonce === null) {
+      currentNonce = await provider.getTransactionCount(address, "pending");
+    }
+    const nonce = currentNonce;
+    currentNonce++;
+    return nonce;
+  } finally {
+    nonceLock = false;
+  }
+}
+
 // ABI minimal untuk fungsi yang dibutuhkan
 const GACHARD_ABI = [
   "function mintCard(address to, uint8 rarity) external returns (uint256 tokenId)",
@@ -74,8 +96,13 @@ export function getContract(signer?: ethers.Signer) {
 export async function mintCard(toAddress: string, rarity: number): Promise<string> {
   // Validate and normalize address to prevent ENS resolution
   const normalizedAddress = ethers.getAddress(toAddress);
-  const contract = getContract();
-  const tx = await contract.mintCard(normalizedAddress, rarity);
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getContract(wallet);
+  
+  // Acquire nonce to prevent collision with concurrent transactions
+  const nonce = await acquireNonce(provider, wallet.address);
+  const tx = await contract.mintCard(normalizedAddress, rarity, { nonce });
   return tx.hash;
 }
 
@@ -97,7 +124,9 @@ export async function mintBatch(toAddress: string, rarities: number[]): Promise<
   const checksummedAddress = ethers.getAddress(cleanAddress);
   console.log("[blockchain] Checksummed address:", checksummedAddress);
   
-  const contract = getContract();
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getContract(wallet);
   console.log("[blockchain] Contract address:", CONTRACT_ADDRESS);
   
   // Use staticCall to test the call without sending a transaction
@@ -110,9 +139,13 @@ export async function mintBatch(toAddress: string, rarities: number[]): Promise<
     throw error;
   }
   
-  // If staticCall succeeds, send the actual transaction
+  // Acquire nonce to prevent collision with concurrent transactions
+  const nonce = await acquireNonce(provider, wallet.address);
+  console.log("[blockchain] Using nonce:", nonce);
+  
+  // If staticCall succeeds, send the actual transaction with explicit nonce
   console.log("[blockchain] Sending actual transaction...");
-  const tx = await contract.mintBatch(checksummedAddress, rarities);
+  const tx = await contract.mintBatch(checksummedAddress, rarities, { nonce });
   console.log("[blockchain] Transaction hash:", tx.hash);
   
   return tx.hash;
@@ -141,14 +174,20 @@ export async function waitForReceipt(
 }
 
 export async function requestPrint(tokenId: number, redeemHash: string, ownerAddress: string): Promise<string> {
-  const contract = getContract();
-  const tx = await contract.requestPrint(tokenId, redeemHash, ownerAddress);
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getContract(wallet);
+  const nonce = await acquireNonce(provider, wallet.address);
+  const tx = await contract.requestPrint(tokenId, redeemHash, ownerAddress, { nonce });
   return tx.hash;
 }
 
 export async function redeemCard(tokenId: number, redeemHash: string, recipientAddress: string): Promise<string> {
-  const contract = getContract();
-  const tx = await contract.redeemCard(tokenId, redeemHash, recipientAddress);
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getContract(wallet);
+  const nonce = await acquireNonce(provider, wallet.address);
+  const tx = await contract.redeemCard(tokenId, redeemHash, recipientAddress, { nonce });
   return tx.hash;
 }
 
@@ -181,14 +220,20 @@ export async function getLastOwner(tokenId: number): Promise<string> {
 }
 
 export async function marketplaceTransfer(tokenId: number, fromAddress: string, toAddress: string): Promise<string> {
-  const contract = getContract();
-  const tx = await contract.marketplaceTransfer(tokenId, fromAddress, toAddress);
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getContract(wallet);
+  const nonce = await acquireNonce(provider, wallet.address);
+  const tx = await contract.marketplaceTransfer(tokenId, fromAddress, toAddress, { nonce });
   return tx.hash;
 }
 
 export async function recordVerification(tokenId: number, riskScore: number, flagged: boolean): Promise<string> {
-  const contract = getContract();
-  const tx = await contract.recordVerification(tokenId, riskScore, flagged);
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getContract(wallet);
+  const nonce = await acquireNonce(provider, wallet.address);
+  const tx = await contract.recordVerification(tokenId, riskScore, flagged, { nonce });
   return tx.hash;
 }
 
@@ -200,7 +245,10 @@ export async function getBalance(address: string, tokenId: number): Promise<bigi
 }
 
 export async function burnCard(tokenId: number, ownerAddress: string): Promise<string> {
-  const contract = getContract();
-  const tx = await contract.burnCard(tokenId, ownerAddress);
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getContract(wallet);
+  const nonce = await acquireNonce(provider, wallet.address);
+  const tx = await contract.burnCard(tokenId, ownerAddress, { nonce });
   return tx.hash;
 }
