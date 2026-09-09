@@ -149,7 +149,7 @@ function LoginInner() {
               boxShadow: "0 0 40px -8px rgba(184,172,255,0.45)",
             }}
           >
-            <Logo size={56} priority className="drop-shadow-[0_0_18px_rgba(184,172,255,0.6)]" />
+            <Logo size={64} priority className="drop-shadow-[0_0_18px_rgba(184,172,255,0.6)]" />
           </div>
         </div>
 
