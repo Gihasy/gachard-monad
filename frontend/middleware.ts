@@ -10,7 +10,9 @@ const PUBLIC_API = [
   "/api/auth/",       // login endpoints
   "/api/scan",        // QR scan — public by design
   "/api/cards/",      // QR generation (/api/cards/[tokenId]/qr)
+  "/api/marketplace/listings",      // marketplace listings — public for browsing
   "/api/marketplace/wishlist-stats", // anonymous wishlist interaction
+  "/api/marketplace/insight",       // market insight — public
   "/api/health",      // health check — public
 ];
 
