@@ -4,9 +4,7 @@ out = "out"
 libs = ["lib"]
 solc = "0.8.28"
 evm_version = "cancun"
+use_literal_content = true
 
 [rpc_endpoints]
-monad_testnet = "${MONAD_TESTNET_RPC}"
-
-[etherscan]
-monad_testnet = { key = "${MONAD_EXPLORER_API_KEY}", url = "https://testnet.monadexplorer.com/api" }
+monad_testnet = "https://rpc.testnet.monad.xyz"
