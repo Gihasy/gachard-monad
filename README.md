@@ -8,7 +8,8 @@ Monad's high throughput (~10,000 TPS) and low latency (~1s block time) make it i
 
 - **App**: https://gachard-monad.vercel.app
 - **Admin Console**: https://gachard-monad.vercel.app/admin
-- **Smart Contract**: [0x712b70CbD3854A11f18839068483114D0068b4FC](https://testnet.monadvision.com/address/0x712b70CbD3854A11f18839068483114D0068b4FC) (verified on Sourcify)
+- **Smart Contract (GachardCard):** [0x2a05a2e3b0e7355b97de593e354063e9474c9d08](https://testnet.monadvision.com/address/0x2a05a2e3b0e7355b97de593e354063e9474c9d08) (verified on Sourcify)
+- **Smart Contract (PackEntropy):** [0x6B53C35e8baBaaBe4DD725573C3f612121764542](https://testnet.monadvision.com/address/0x6B53C35e8baBaaBe4DD725573C3f612121764542) (verified on Sourcify)
 
 ## Features
 
@@ -87,6 +88,7 @@ See `frontend/.env.local.example`.
 - **ADR-025**: AI Anomaly Detection Oracle
 - **ADR-026**: Dismantle & Crystal (burn-to-earn)
 - **ADR-027**: Become a Creator (whitelist form)
+- **ADR-028**: Pyth Entropy for provably fair pack randomness
 
 See `DECISIONS.md` for all 27 ADRs.
 
@@ -166,12 +168,11 @@ Admin Console displays:
 ## Smart Contract Tests
 
 ```
-Ran 54 tests — 54 passed, 0 failed, 0 skipped
+Ran 76 tests — 76 passed, 0 failed, 0 skipped
 Compiler: Solc 0.8.28 + EVM cancun
-Duration: 20.19ms
 ```
 
-Test coverage: mint, print, redeem, transfer, burn, verification, access control, events, error handling.
+Test coverage: mint, print, redeem, transfer, burn, verification, access control, events, error handling, Pyth Entropy integration.
 
 ## Notes for AI Coding Agents
 - Read `MEMORY.md`, `DECISIONS.md`, and `docs/` before making changes

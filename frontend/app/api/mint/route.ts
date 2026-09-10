@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 
-export const maxDuration = 15;
+export const maxDuration = 30;
 import { getCollection, parseObjectId } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
-import { mintBatch, waitForReceipt } from "@/lib/blockchain";
-import { buildPackRarities } from "@/lib/odds";
+import {
+  mintBatch,
+  waitForReceipt,
+  requestPackEntropy,
+  fulfillPackEntropy,
+  getEntropySeed,
+} from "@/lib/blockchain";
+import { buildPackRarities, buildPackRaritiesFromSeed } from "@/lib/odds";
 import { pickCardTemplate, seedCardTemplates, updateArtworkUrls } from "@/lib/card-templates";
 import { deductCredits, addCredits } from "@/lib/credits";
 import { generateInvoiceId } from "@/lib/invoice";
@@ -18,7 +24,6 @@ async function confirmMint(txHash: string, txId: string, contractAddress: string
     const cleanContractAddress = contractAddress.trim().toLowerCase();
     console.log("[confirmMint] Starting for tx:", txHash, "txId:", txId, "contract:", cleanContractAddress);
     
-    // Poll with shorter intervals since client is also polling
     const receipt = await waitForReceipt(txHash, 15, 1000);
     if (!receipt) {
       console.error("[confirmMint] No receipt found for tx:", txHash);
@@ -31,7 +36,6 @@ async function confirmMint(txHash: string, txId: string, contractAddress: string
 
     console.log("[confirmMint] Receipt found, logs count:", receipt.logs.length);
     const CARD_MINTED_TOPIC = ethers.id("CardMinted(uint256,address,uint8,uint8)");
-    console.log("[confirmMint] Expected topic:", CARD_MINTED_TOPIC);
     
     const cardsCollection = await getCollection("cards");
     const txCollection = await getCollection("transactions");
@@ -87,6 +91,87 @@ const PACK_TYPES: Record<string, { price: number; cards: number; guaranteed: num
   booster: { price: 800, cards: 10, guaranteed: 2 },
 };
 
+/** Background entropy: poll for seed, compute rarities, fulfill pack */
+async function fulfillEntropyPack(
+  txId: string,
+  sequenceNumber: number,
+  userAddr: string,
+  packSize: number,
+  guaranteed: number,
+  contractAddress: string
+) {
+  const txCollection = await getCollection("transactions");
+  const MAX_POLL = 30; // 30 seconds max
+  const POLL_INTERVAL = 1000;
+
+  try {
+    // Poll for seed
+    let seed: string | null = null;
+    for (let i = 0; i < MAX_POLL; i++) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL));
+      const rawSeed = await getEntropySeed(sequenceNumber);
+      if (rawSeed && rawSeed !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        seed = rawSeed;
+        break;
+      }
+    }
+
+    if (!seed) {
+      console.error("[entropy] Seed not received after", MAX_POLL, "seconds");
+      await txCollection.updateOne(
+        { _id: parseObjectId(txId) },
+        { $set: { status: "failed", error: "Entropy timeout", updatedAt: new Date().toISOString() } }
+      );
+      return;
+    }
+
+    // Update tx with seed
+    await txCollection.updateOne(
+      { _id: parseObjectId(txId) },
+      { $set: { entropySeed: seed, updatedAt: new Date().toISOString() } }
+    );
+
+    // Compute rarities deterministically from seed
+    const rarities = buildPackRaritiesFromSeed(seed, packSize, guaranteed);
+
+    // Fulfill pack on-chain
+    const fulfillTxHash = await fulfillPackEntropy(sequenceNumber, userAddr, rarities);
+
+    // Update tx with fulfill hash and rarities
+    await txCollection.updateOne(
+      { _id: parseObjectId(txId) },
+      {
+        $set: {
+          status: "pending",
+          txHash: fulfillTxHash,
+          rarities,
+          updatedAt: new Date().toISOString(),
+        },
+      }
+    );
+
+    // Update card rarities
+    const cardsCollection = await getCollection("cards");
+    for (let i = 0; i < rarities.length; i++) {
+      await cardsCollection.updateOne(
+        { txId, pickIndex: i },
+        { $set: { rarity: rarities[i] } }
+      );
+    }
+
+    // Confirm mint
+    confirmMint(fulfillTxHash, txId, contractAddress).catch(err => {
+      console.error("[entropy] background confirm failed:", err);
+    });
+  } catch (err) {
+    console.error("[entropy] fulfill failed:", err);
+    await txCollection.updateOne(
+      { _id: parseObjectId(txId) },
+      { $set: { status: "failed", error: String(err), updatedAt: new Date().toISOString() } }
+    );
+  }
+}
+
 export async function POST(request: Request) {
   const { packType = "standard" } = await request.json();
 
@@ -120,97 +205,173 @@ export async function POST(request: Request) {
     await seedCardTemplates();
     await updateArtworkUrls();
 
-    // Build rarities based on pack type
-    const rarities = await buildPackRarities(pack.cards, pack.guaranteed);
-
-    // Pick templates in parallel
-    const templates = await Promise.all(rarities.map((r) => pickCardTemplate(r)));
-
     // Validate wallet address before blockchain call
     const walletAddress = user.walletAddress?.trim().replace(/[\r\n]/g, '');
-    console.log("[mint] User wallet address:", walletAddress);
-    console.log("[mint] User ID:", user._id);
-    console.log("[mint] User object keys:", Object.keys(user));
-    
     if (!walletAddress) {
       throw new Error(`Wallet address is missing for user ${user._id}`);
     }
-    
     if (!ethers.isAddress(walletAddress)) {
       throw new Error(`Invalid wallet address format: "${walletAddress}"`);
     }
 
-    // Mint batch — 1 tx untuk seluruh pack (atomik)
-    console.log("[mint] Calling mintBatch with address:", walletAddress);
-    const txHash = await mintBatch(walletAddress, rarities);
-
-    // Simpan transaksi
     const contractAddress = process.env.CONTRACT_ADDRESS?.trim()!;
-    const txCollection = await getCollection("transactions");
-    const txResult = await txCollection.insertOne({
-      userId: user._id.toString(),
-      type: "mint",
-      amount: pack.price,
-      rarities,
-      templateIds: templates.map((t) => t.templateId),
-      tokenIds: [], // populated saat konfirmasi on-chain
-      purchasePrice: pack.price,
-      txHash,
-      status: "pending",
-      contractAddress,
-      fromAddress: process.env.ADMIN_WALLET_ADDRESS?.trim(),
-      toAddress: user.walletAddress,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    const entropyContractAddress = process.env.ENTROPY_CONTRACT_ADDRESS?.trim();
+    const useEntropy = !!entropyContractAddress;
 
-    // Generate card IDs in parallel and save
-    const cardsCollection = await getCollection("cards");
-    const cardIds = await Promise.all(
-      templates.map(() => generateUniqueCardId(cardsCollection))
-    );
-    const cardDocs = templates.map((template, i) => ({
-      cardId: cardIds[i],
-      tokenId: null,
-      txId: txResult.insertedId.toString(),
-      pickIndex: i,
-      templateId: template.templateId,
-      rarity: rarities[i],
-      ownerAddress: user.walletAddress,
-      status: "pending",
-      contractAddress,
-      viewed: false,
-      createdAt: new Date().toISOString(),
-    }));
-    await cardsCollection.insertMany(cardDocs);
+    if (useEntropy) {
+      // === 3-STEP ENTROPY FLOW ===
+      console.log("[mint] Using Pyth Entropy flow");
 
-    // Build response array — return immediately (ADR-018: async blockchain pattern)
-    const cards = templates.map((template, i) => ({
-      rarity: rarities[i],
-      template: {
-        templateId: template.templateId,
-        name: template.name,
-        artworkUrl: template.artworkUrl,
-      },
-    }));
+      // Step 1: Request entropy
+      const { sequenceNumber, txHash: requestTxHash } = await requestPackEntropy(
+        Date.now(), // packId
+        walletAddress,
+        pack.cards,
+        pack.guaranteed
+      );
 
-    // Fire-and-forget: confirm on-chain in background
-    // Use setTimeout to allow the response to be sent first
-    setTimeout(() => {
-      confirmMint(txHash, txResult.insertedId.toString(), contractAddress).catch(err => {
-        console.error("[mint] background confirm failed:", err);
+      // Pick templates (will be updated with correct rarities later)
+      const placeholderRarities = new Array(pack.cards).fill(0);
+      const templates = await Promise.all(placeholderRarities.map((r) => pickCardTemplate(r)));
+
+      // Save transaction with entropy_pending status
+      const txCollection = await getCollection("transactions");
+      const txResult = await txCollection.insertOne({
+        userId: user._id.toString(),
+        type: "mint",
+        amount: pack.price,
+        rarities: placeholderRarities,
+        templateIds: templates.map((t) => t.templateId),
+        tokenIds: [],
+        purchasePrice: pack.price,
+        txHash: requestTxHash,
+        status: "entropy_pending",
+        contractAddress,
+        entropySequenceNumber: sequenceNumber,
+        entropySeed: null,
+        rarityHash: null,
+        fromAddress: process.env.ADMIN_WALLET_ADDRESS?.trim(),
+        toAddress: walletAddress,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
-    }, 100);
 
-    // Also trigger immediate confirmation attempt (non-blocking)
-    confirmMint(txHash, txResult.insertedId.toString(), contractAddress).catch(() => {});
+      // Generate card IDs
+      const cardsCollection = await getCollection("cards");
+      const cardIds = await Promise.all(
+        templates.map(() => generateUniqueCardId(cardsCollection))
+      );
+      const cardDocs = templates.map((template, i) => ({
+        cardId: cardIds[i],
+        tokenId: null,
+        txId: txResult.insertedId.toString(),
+        pickIndex: i,
+        templateId: template.templateId,
+        rarity: placeholderRarities[i], // Will be updated by fulfillEntropyPack
+        ownerAddress: walletAddress,
+        status: "pending",
+        contractAddress,
+        viewed: false,
+        createdAt: new Date().toISOString(),
+      }));
+      await cardsCollection.insertMany(cardDocs);
 
-    return NextResponse.json({
-      status: friendlyTxStatus("pending"),
-      txId: generateInvoiceId(txResult.insertedId.toString()),
-      cards,
-      newBalance,
-    });
+      // Background: poll for seed → compute rarities → fulfill → confirm
+      const txIdStr = txResult.insertedId.toString();
+      setTimeout(() => {
+        fulfillEntropyPack(txIdStr, sequenceNumber, walletAddress, pack.cards, pack.guaranteed, contractAddress).catch(err => {
+          console.error("[mint] entropy fulfill failed:", err);
+        });
+      }, 100);
+
+      // Return immediately with placeholder cards (will be updated)
+      const cards = templates.map((template, i) => ({
+        rarity: placeholderRarities[i],
+        template: {
+          templateId: template.templateId,
+          name: template.name,
+          artworkUrl: template.artworkUrl,
+        },
+      }));
+
+      return NextResponse.json({
+        status: friendlyTxStatus("entropy_pending"),
+        txId: generateInvoiceId(txResult.insertedId.toString()),
+        cards,
+        newBalance,
+        entropy: true,
+      });
+    } else {
+      // === LEGACY FLOW (Math.random fallback) ===
+      console.log("[mint] Using legacy Math.random flow (ENTROPY_CONTRACT_ADDRESS not set)");
+
+      const rarities = await buildPackRarities(pack.cards, pack.guaranteed);
+      const templates = await Promise.all(rarities.map((r) => pickCardTemplate(r)));
+
+      const txHash = await mintBatch(walletAddress, rarities);
+
+      const txCollection = await getCollection("transactions");
+      const txResult = await txCollection.insertOne({
+        userId: user._id.toString(),
+        type: "mint",
+        amount: pack.price,
+        rarities,
+        templateIds: templates.map((t) => t.templateId),
+        tokenIds: [],
+        purchasePrice: pack.price,
+        txHash,
+        status: "pending",
+        contractAddress,
+        fromAddress: process.env.ADMIN_WALLET_ADDRESS?.trim(),
+        toAddress: walletAddress,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      const cardsCollection = await getCollection("cards");
+      const cardIds = await Promise.all(
+        templates.map(() => generateUniqueCardId(cardsCollection))
+      );
+      const cardDocs = templates.map((template, i) => ({
+        cardId: cardIds[i],
+        tokenId: null,
+        txId: txResult.insertedId.toString(),
+        pickIndex: i,
+        templateId: template.templateId,
+        rarity: rarities[i],
+        ownerAddress: walletAddress,
+        status: "pending",
+        contractAddress,
+        viewed: false,
+        createdAt: new Date().toISOString(),
+      }));
+      await cardsCollection.insertMany(cardDocs);
+
+      const cards = templates.map((template, i) => ({
+        rarity: rarities[i],
+        template: {
+          templateId: template.templateId,
+          name: template.name,
+          artworkUrl: template.artworkUrl,
+        },
+      }));
+
+      setTimeout(() => {
+        confirmMint(txHash, txResult.insertedId.toString(), contractAddress).catch(err => {
+          console.error("[mint] background confirm failed:", err);
+        });
+      }, 100);
+
+      confirmMint(txHash, txResult.insertedId.toString(), contractAddress).catch(() => {});
+
+      return NextResponse.json({
+        status: friendlyTxStatus("pending"),
+        txId: generateInvoiceId(txResult.insertedId.toString()),
+        cards,
+        newBalance,
+        entropy: false,
+      });
+    }
   } catch (error) {
     // REFUND
     const errMsg = error instanceof Error ? error.message : String(error);

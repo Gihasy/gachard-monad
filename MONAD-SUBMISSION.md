@@ -22,6 +22,7 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 - **Wishlist & Cart** — Standard e-commerce UX for marketplace
 
 ### Advanced Features
+- **Pyth Entropy Integration** — Provably fair pack randomness using on-chain verifiable RNG, replacing Math.random() with cryptographically secure seed generation
 - **AI Anomaly Detection** — Wash-trading detection on marketplace transactions
 - **Dismantle & Crystal** — Burn cards to earn Crystal currency
 - **QR Verification** — Scan physical cards for authenticity verification
@@ -34,10 +35,22 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 - **Standard:** ERC-1155 (one-token-per-instance)
 - **Compiler:** Solc 0.8.28 + EVM cancun
 - **Verification:** Sourcify exact_match on MonadVision
-- **Tests:** 54/54 passed (Foundry) — covering mint, print, redeem, transfer, burn, verification
+- **Tests:** 76/76 passed (Foundry) — covering mint, print, redeem, transfer, burn, verification, Pyth Entropy
 
 ### Nonce Manager
 Implemented `acquireNonce()` in `blockchain.ts` with lock mechanism to handle concurrent transactions. This prevents "existing transaction had higher priority" errors when multiple users buy packs simultaneously — a critical feature for real-time TCG gameplay.
+
+### Pyth Entropy — Provably Fair Randomness
+Pack rarity is now determined by **Pyth Entropy**, an on-chain verifiable RNG protocol on Monad Testnet. This replaces the previous `Math.random()` implementation with a 4-layer security model:
+
+1. **Access Control** — Only authorized contracts can request/fulfill entropy
+2. **Hash Commitment** — `keccak256(seed, rarities)` stored on-chain creates immutable binding
+3. **Structural Check** — On-chain validation ensures minimum Rare+ card count
+4. **Transparency** — Public verification endpoint at `/api/verify/pack/[txHash]`
+
+The seed is generated via Pyth's commit-reveal protocol, making it cryptographically secure and publicly auditable. Users can verify their pack fairness by re-running the deterministic algorithm with the on-chain seed.
+
+**Pyth Entropy Contract:** `0x825c0390f379c631f3cf11a82a37d20bddf93c07` (Monad Testnet)
 
 ### Architecture
 - **Custodial Wallets** — Users never see private keys

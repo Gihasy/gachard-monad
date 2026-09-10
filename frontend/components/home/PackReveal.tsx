@@ -32,6 +32,7 @@ export interface RevealedCard {
 export interface RevealSuccess {
   cards: RevealedCard[];
   newBalance?: number;
+  entropy?: boolean;
   error?: undefined;
 }
 
@@ -48,7 +49,7 @@ interface PackRevealProps {
   packType?: "standard" | "booster";
 }
 
-type RevealPhase = "ready" | "bursting" | "revealing" | "done";
+type RevealPhase = "ready" | "requesting" | "bursting" | "revealing" | "done";
 
 function SparkBurst() {
   const sparks = useMemo(() => {
@@ -152,14 +153,31 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
     );
   }
 
+  const isEntropy = "cards" in result && result.entropy === true;
+
   const handleOpen = () => {
     if (phase !== "ready") return;
-    setPhase("bursting");
-    const t = setTimeout(() => {
-      setRevealedCount(0);
-      setPhase("revealing");
-    }, 1400);
-    timers.current.push(t);
+
+    if (isEntropy) {
+      // Entropy mode: brief "requesting" phase while on-chain randomness resolves
+      setPhase("requesting");
+      const t = setTimeout(() => {
+        setPhase("bursting");
+        const t2 = setTimeout(() => {
+          setRevealedCount(0);
+          setPhase("revealing");
+        }, 1400);
+        timers.current.push(t2);
+      }, 2000);
+      timers.current.push(t);
+    } else {
+      setPhase("bursting");
+      const t = setTimeout(() => {
+        setRevealedCount(0);
+        setPhase("revealing");
+      }, 1400);
+      timers.current.push(t);
+    }
   };
 
   return (
@@ -183,14 +201,20 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
         </button>
       )}
 
-      {/* ─── READY / BURSTING ─── */}
-      {(phase === "ready" || phase === "bursting") && (
+      {/* ─── READY / REQUESTING / BURSTING ─── */}
+      {(phase === "ready" || phase === "requesting" || phase === "bursting") && (
         <div className="text-center px-4">
           <h2 className="font-display uppercase text-2xl sm:text-3xl md:text-4xl mb-2">
-            <span className="text-gradient-aurora">Pack Ready</span>
+            <span className="text-gradient-aurora">
+              {phase === "requesting" ? "Generating Randomness" : "Pack Ready"}
+            </span>
           </h2>
           <p className="text-white/50 text-xs sm:text-sm mb-4 sm:mb-8">
-            {phase === "bursting" ? "Unsealing…" : "Your pack is ready to open"}
+            {phase === "requesting"
+              ? "Verifying on-chain randomness…"
+              : phase === "bursting"
+                ? "Unsealing…"
+                : "Your pack is ready to open"}
           </p>
 
           <div className="relative mx-auto flex items-center justify-center" style={{ height: "min(360px, 50vh)" }}>

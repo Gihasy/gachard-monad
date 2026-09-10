@@ -4,6 +4,7 @@ out = "out"
 libs = ["lib"]
 solc = "0.8.28"
 evm_version = "cancun"
+via_ir = true
 use_literal_content = true
 
 [rpc_endpoints]

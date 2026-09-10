@@ -5,7 +5,7 @@ import { ethers } from "ethers";
 import { generateInvoiceId } from "./invoice";
 import { friendlyTxStatus } from "./status-map";
 
-export type TxStatus = "pending" | "confirmed" | "failed";
+export type TxStatus = "entropy_pending" | "pending" | "confirmed" | "failed";
 
 export interface Transaction {
   _id?: ObjectId;
@@ -24,6 +24,9 @@ export interface Transaction {
   purchasePrice?: number;
   contractAddress?: string;
   error?: string;
+  entropySequenceNumber?: number;
+  entropySeed?: string | null;
+  rarityHash?: string | null;
   createdAt: string;
   updatedAt: string;
 }

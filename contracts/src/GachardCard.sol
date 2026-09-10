@@ -23,14 +23,29 @@ contract GachardCard is ERC1155, Ownable {
     mapping(uint256 => address) public lastOwner;
     mapping(uint256 => uint8) public lastRiskScore;
     mapping(uint256 => bool) public flaggedSuspicious;
+    mapping(address => bool) public authorizedMinters;
 
     event CardMinted(uint256 indexed tokenId, address indexed to, CardStatus status, Rarity rarity);
     event CardStatusChanged(uint256 indexed tokenId, CardStatus oldStatus, CardStatus newStatus);
     event MarketplaceTransfer(uint256 indexed tokenId, address indexed from, address indexed to);
     event VerificationRecorded(uint256 indexed tokenId, uint8 riskScore, bool flagged);
     event CardBurned(uint256 indexed tokenId, address indexed owner, uint8 rarity);
+    event AuthorizedMinterUpdated(address indexed minter, bool authorized);
 
     constructor() ERC1155("") Ownable(msg.sender) {}
+
+    modifier onlyOwnerOrAuthorized() {
+        require(msg.sender == owner() || authorizedMinters[msg.sender], "Not authorized");
+        _;
+    }
+
+    /**
+     * @notice Tambah/hapus authorized minter (misal PackEntropy contract)
+     */
+    function setAuthorizedMinter(address minter, bool authorized) external onlyOwner {
+        authorizedMinters[minter] = authorized;
+        emit AuthorizedMinterUpdated(minter, authorized);
+    }
 
     /**
      * @notice Mint kartu baru dengan status default Digital dan rarity tertentu
@@ -38,7 +53,7 @@ contract GachardCard is ERC1155, Ownable {
      * @param rarity Rarity kartu (0=Common, 1=Rare, 2=Epic, 3=Legendary)
      * @return tokenId ID kartu yang baru di-mint
      */
-    function mintCard(address to, uint8 rarity) external onlyOwner returns (uint256 tokenId) {
+    function mintCard(address to, uint8 rarity) external onlyOwnerOrAuthorized returns (uint256 tokenId) {
         require(rarity <= 3, "Invalid rarity");
         tokenId = nextTokenId++;
         _mint(to, tokenId, 1, "");
@@ -54,7 +69,7 @@ contract GachardCard is ERC1155, Ownable {
      * @param rarities Array rarity per kartu (0=Common, 1=Rare, 2=Epic, 3=Legendary)
      * @return tokenIds Array ID kartu yang baru di-mint
      */
-    function mintBatch(address to, uint8[] calldata rarities) external onlyOwner returns (uint256[] memory tokenIds) {
+    function mintBatch(address to, uint8[] calldata rarities) external onlyOwnerOrAuthorized returns (uint256[] memory tokenIds) {
         uint256 count = rarities.length;
         require(count > 0, "Empty rarities array");
 

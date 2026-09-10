@@ -56,7 +56,7 @@ contract GachardCardTest is Test {
 
     function test_only_owner_can_mint() public {
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
+        vm.expectRevert("Not authorized");
         card.mintCard(user1, 0);
     }
 
@@ -137,7 +137,7 @@ contract GachardCardTest is Test {
         rarities[0] = 0;
 
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
+        vm.expectRevert("Not authorized");
         card.mintBatch(user1, rarities);
     }
 
@@ -572,5 +572,50 @@ contract GachardCardTest is Test {
         // Second burn attempt — balance is 0
         vm.expectRevert("Owner does not hold card");
         card.burnCard(tokenId, user1);
+    }
+
+    // ==================== authorized minter tests ====================
+
+    function test_authorized_minter_can_call_mintBatch() public {
+        address minter = address(0xBEEF);
+        card.setAuthorizedMinter(minter, true);
+
+        uint8[] memory rarities = new uint8[](2);
+        rarities[0] = 0;
+        rarities[1] = 1;
+
+        vm.prank(minter);
+        uint256[] memory tokenIds = card.mintBatch(user1, rarities);
+
+        assertEq(tokenIds.length, 2);
+        assertEq(card.balanceOf(user1, tokenIds[0]), 1);
+        assertEq(card.balanceOf(user1, tokenIds[1]), 1);
+    }
+
+    function test_unauthorized_address_cannot_call_mintBatch() public {
+        uint8[] memory rarities = new uint8[](1);
+        rarities[0] = 0;
+
+        vm.prank(user1);
+        vm.expectRevert("Not authorized");
+        card.mintBatch(user1, rarities);
+    }
+
+    function test_owner_can_still_call_mintBatch() public {
+        uint8[] memory rarities = new uint8[](2);
+        rarities[0] = 0;
+        rarities[1] = 2;
+
+        uint256[] memory tokenIds = card.mintBatch(user1, rarities);
+
+        assertEq(tokenIds.length, 2);
+        assertEq(uint8(card.cardRarity(tokenIds[0])), 0);
+        assertEq(uint8(card.cardRarity(tokenIds[1])), 2);
+    }
+
+    function test_setAuthorizedMinter_only_owner() public {
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user1));
+        card.setAuthorizedMinter(address(0xBEEF), true);
     }
 }

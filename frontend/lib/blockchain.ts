@@ -252,3 +252,85 @@ export async function burnCard(tokenId: number, ownerAddress: string): Promise<s
   const tx = await contract.burnCard(tokenId, ownerAddress, { nonce });
   return tx.hash;
 }
+
+// ==================== PackEntropy functions ====================
+
+const PACK_ENTROPY_ABI = [
+  "function requestPack(uint256 packId, address userAddr, uint8 packSize, uint8 guaranteed) external returns (uint64 sequenceNumber)",
+  "function fulfillPack(uint64 sequenceNumber, address userAddr, uint8[] calldata rarities) external",
+  "function getSeed(uint64 sequenceNumber) external view returns (bytes32)",
+  "function getRarityHash(uint64 sequenceNumber) external view returns (bytes32)",
+  "function getBalance() external view returns (uint256)",
+  "event PackRequested(uint64 indexed sequenceNumber, address indexed userAddr, uint8 packSize, uint8 guaranteed)",
+  "event PackFulfilled(uint64 indexed sequenceNumber, address indexed userAddr, bytes32 rarityHash)",
+];
+
+function getPackEntropyContract(signer?: ethers.Signer) {
+  const entropyAddress = process.env.ENTROPY_CONTRACT_ADDRESS?.trim();
+  if (!entropyAddress || !ethers.isAddress(entropyAddress)) {
+    throw new Error(`Invalid ENTROPY_CONTRACT_ADDRESS: "${entropyAddress}"`);
+  }
+  const s = signer || getAdminWallet();
+  return new ethers.Contract(entropyAddress, PACK_ENTROPY_ABI, s);
+}
+
+export async function requestPackEntropy(
+  packId: number,
+  userAddr: string,
+  packSize: number,
+  guaranteed: number
+): Promise<{ sequenceNumber: number; txHash: string }> {
+  const normalizedAddress = ethers.getAddress(userAddr);
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getPackEntropyContract(wallet);
+  const nonce = await acquireNonce(provider, wallet.address);
+  const tx = await contract.requestPack(packId, normalizedAddress, packSize, guaranteed, { nonce });
+  const receipt = await waitForReceipt(tx.hash, 15, 1000);
+  if (!receipt) throw new Error("No receipt for requestPack tx");
+
+  // Extract sequenceNumber from PackRequested event
+  const PACK_REQUESTED_TOPIC = ethers.id("PackRequested(uint64,address,uint8,uint8)");
+  for (const log of receipt.logs) {
+    if (log.topics[0] === PACK_REQUESTED_TOPIC) {
+      const sequenceNumber = parseInt(log.topics[1], 16);
+      return { sequenceNumber, txHash: tx.hash };
+    }
+  }
+  throw new Error("PackRequested event not found in receipt");
+}
+
+export async function fulfillPackEntropy(
+  sequenceNumber: number,
+  userAddr: string,
+  rarities: number[]
+): Promise<string> {
+  const normalizedAddress = ethers.getAddress(userAddr);
+  const provider = getProvider();
+  const wallet = getAdminWallet().connect(provider);
+  const contract = getPackEntropyContract(wallet);
+  const nonce = await acquireNonce(provider, wallet.address);
+  const tx = await contract.fulfillPack(sequenceNumber, normalizedAddress, rarities, { nonce });
+  return tx.hash;
+}
+
+export async function getEntropySeed(sequenceNumber: number): Promise<string> {
+  return withRetry(async () => {
+    const contract = getPackEntropyContract();
+    return contract.getSeed(sequenceNumber);
+  }, `getSeed(${sequenceNumber})`);
+}
+
+export async function getEntropyRarityHash(sequenceNumber: number): Promise<string> {
+  return withRetry(async () => {
+    const contract = getPackEntropyContract();
+    return contract.getRarityHash(sequenceNumber);
+  }, `getRarityHash(${sequenceNumber})`);
+}
+
+export async function getEntropyBalance(): Promise<bigint> {
+  return withRetry(async () => {
+    const contract = getPackEntropyContract();
+    return contract.getBalance();
+  }, "getEntropyBalance");
+}

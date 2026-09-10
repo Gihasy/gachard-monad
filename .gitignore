@@ -73,6 +73,7 @@ frontend/public/window.svg
 
 # Session reports
 docs/SESSION-REPORT*.md
+sessions/
 
 # Media files
 *.mp4
