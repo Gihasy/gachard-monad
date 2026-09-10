@@ -27,11 +27,12 @@ Monad's high throughput (~10,000 TPS) and low latency (~1s block time) make it i
 - **Transaction History** — Full transaction history in Profile page
 - **Unique Card ID** — Each card has a unique hex ID (e.g. `#8a866`)
 - **Invoice ID** — Each transaction has an Invoice ID (e.g. `GC-20260730-a3f1`)
-- **Admin Console** — Manage users, transactions, cards, print requests
+- **Admin Console** — Manage users, transactions, cards, print requests, monitor MON balances
 - **Trade Marketplace** — Buy/sell cards between users with FVM pricing
 - **Dismantle & Crystal** — Burn cards to earn Crystal currency
 - **AI Anomaly Detection** — Wash-trading detection on marketplace
 - **Support Gachard** — Floating CTA button for early supporters
+- **Pyth Entropy** — Provably fair pack randomness with on-chain verifiable RNG
 
 ## Quick Start
 
@@ -73,6 +74,7 @@ See `frontend/.env.local.example`.
 | Auth | Google OAuth + demo accounts |
 | Payment | Stripe Test Mode (credit + direct) |
 | AI | Gemini API (market insight) |
+| RNG | Pyth Entropy (on-chain verifiable) |
 | Hosting | Vercel (frontend + backend) |
 
 ## Architecture
@@ -90,7 +92,7 @@ See `frontend/.env.local.example`.
 - **ADR-027**: Become a Creator (whitelist form)
 - **ADR-028**: Pyth Entropy for provably fair pack randomness
 
-See `DECISIONS.md` for all 27 ADRs.
+See `DECISIONS.md` for all 28 ADRs.
 
 ### Project Structure
 ```
@@ -125,6 +127,9 @@ forge create src/GachardCard.sol:GachardCard \
   --rpc-url https://testnet-rpc.monad.xyz \
   --private-key <YOUR_PRIVATE_KEY> \
   --chain-id 10143
+
+# Deploy PackEntropy (auto-authorizes as minter)
+forge script script/DeployPackEntropy.s.sol --rpc-url monad_testnet --broadcast
 ```
 
 ### Frontend (Vercel)
@@ -137,7 +142,9 @@ forge create src/GachardCard.sol:GachardCard \
    - `DATABASE_NAME` — gachard-monad
    - `GOOGLE_CLIENT_ID` — Google OAuth Client ID
    - `GOOGLE_CLIENT_SECRET` — Google OAuth Client Secret
-   - `CONTRACT_ADDRESS` — Smart contract address
+   - `CONTRACT_ADDRESS` — GachardCard contract address
+   - `ENTROPY_CONTRACT_ADDRESS` — PackEntropy contract address (for on-chain RNG)
+   - `PYTH_ENTROPY_ADDRESS` — Pyth Entropy contract address (Monad Testnet)
    - `ADMIN_WALLET_ADDRESS` — Admin wallet address
    - `ADMIN_PRIVATE_KEY` — Admin wallet private key
    - `RPC_URL` — Monad Testnet RPC URL
@@ -161,20 +168,39 @@ All blockchain transactions are verifiable on Monad Explorer:
 - **Verification**: Sourcify exact_match ✅
 - **Pack Verification**: `/api/verify/pack/[txHash]` — verify rarity fairness on-chain
 
-Admin Console displays:
-- All transactions with clickable txHash links to Monad Explorer
-- User wallet addresses
-- Token IDs on blockchain
-- Risk scores from AI anomaly detection
+### Admin Console Features
+- **Balance Monitoring** — Real-time MON balance for admin wallet (gas) and PackEntropy (entropy fee)
+- **Copy Address** — One-click copy for contract addresses with visual feedback
+- **Transaction Tracking** — All transactions with clickable txHash links to Monad Explorer
+- **User Wallets** — View user wallet addresses
+- **Token IDs** — Track NFT tokens on blockchain
+- **Risk Scores** — AI anomaly detection results
 
 ## Smart Contract Tests
 
 ```
 Ran 76 tests — 76 passed, 0 failed, 0 skipped
-Compiler: Solc 0.8.28 + EVM cancun
+Compiler: Solc 0.8.28 + EVM cancun + via_ir
 ```
 
-Test coverage: mint, print, redeem, transfer, burn, verification, access control, events, error handling, Pyth Entropy integration.
+Test coverage: mint, print, redeem, transfer, burn, verification, access control, events, error handling, Pyth Entropy integration (18 tests).
+
+## Pyth Entropy Integration
+
+Pack rarity is determined by **Pyth Entropy**, an on-chain verifiable RNG protocol on Monad Testnet. This replaces `Math.random()` with a 4-layer security model:
+
+1. **Access Control** — Only authorized contracts can request/fulfill entropy
+2. **Hash Commitment** — `keccak256(seed, rarities)` stored on-chain creates immutable binding
+3. **Structural Check** — On-chain validation ensures minimum Rare+ card count
+4. **Transparency** — Public verification endpoint at `/api/verify/pack/[txHash]`
+
+### Cost per Pack Opening
+| Pack Type | Gas (Admin) | Entropy Fee (PackEntropy) | Total |
+|-----------|-------------|---------------------------|-------|
+| Standard (5 cards) | ~0.003 MON | ~0.03 MON | ~0.033 MON |
+| Booster (10 cards) | ~0.005 MON | ~0.03 MON | ~0.035 MON |
+
+All costs are sponsored by the platform — users only pay with Credits.
 
 ## Notes for AI Coding Agents
 - Read `MEMORY.md`, `DECISIONS.md`, and `docs/` before making changes
