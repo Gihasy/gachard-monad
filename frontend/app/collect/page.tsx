@@ -67,74 +67,48 @@ export default function PacksPage() {
             .catch(() => {});
           window.dispatchEvent(new Event("balance-change"));
 
-          const txId = data.txId;
+          const rawTxId = data.rawTxId;
 
-          // If entropy flow, show requesting state and poll for real rarities
-          if (data.entropy && txId) {
+          // If entropy flow, call fulfill endpoint (blocking)
+          if (data.entropy && rawTxId) {
             setReveal({
               cards: data.cards, // placeholder cards for initial display
               entropy: true,
             });
 
-            // Poll for entropy completion (cards with real rarities)
-            let entropyAttempts = 0;
-            const maxEntropyAttempts = 30; // 30 * 2s = 60s max
-            const entropyPoll = setInterval(async () => {
-              entropyAttempts++;
-              if (entropyAttempts >= maxEntropyAttempts) {
-                clearInterval(entropyPoll);
-                setReveal({ error: "Timeout waiting for randomness. Please try again." });
-                return;
+            // Call fulfill endpoint - this blocks until entropy completes
+            try {
+              const fulfillRes = await fetch("/api/mint/fulfill", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ txId: rawTxId }),
+              });
+              const fulfillData = await fulfillRes.json();
+
+              if (fulfillData.success) {
+                setReveal({
+                  cards: fulfillData.cards.map((c: { rarity: number; cardId?: string; tokenId?: number }) => ({
+                    rarity: c.rarity,
+                    tokenId: c.tokenId,
+                  })),
+                  newBalance: data.newBalance,
+                });
+                window.dispatchEvent(new Event("cards-updated"));
+              } else {
+                setReveal({
+                  error: fulfillData.message || fulfillData.error || "Failed to process randomness",
+                });
               }
-              try {
-                const txRes = await fetch(`/api/transactions?txId=${txId}`, { credentials: "include" });
-                if (txRes.ok) {
-                  const txData = await txRes.json();
-                  const rawStatus = txData.rawStatus;
-
-                  if (rawStatus === "pending" || rawStatus === "confirmed") {
-                    // Entropy fulfilled - fetch real card data
-                    clearInterval(entropyPoll);
-
-                    const cardsRes = await fetch("/api/cards", { credentials: "include" });
-                    if (cardsRes.ok) {
-                      const cardsData = await cardsRes.json();
-                      // Filter cards from this transaction
-                      const mintCards = cardsData.cards?.filter(
-                        (c: { txId: string }) => c.txId === txId
-                      );
-
-                      if (mintCards && mintCards.length > 0) {
-                        // Check if cards have real rarities (not all 0)
-                        const hasRealRarities = mintCards.some((c: { rarity: number }) => c.rarity > 0);
-
-                        if (hasRealRarities) {
-                          setReveal({
-                            cards: mintCards.map((c: { rarity: number; templateId: string }) => ({
-                              rarity: c.rarity,
-                              template: { id: c.templateId },
-                            })),
-                            entropy: false,
-                          });
-                          window.dispatchEvent(new Event("cards-updated"));
-                        }
-                      }
-                    }
-                  } else if (rawStatus === "failed") {
-                    clearInterval(entropyPoll);
-                    setReveal({ error: "Randomness request failed. Credits refunded." });
-                  }
-                }
-              } catch {
-                // Ignore polling errors
-              }
-            }, 2000);
+            } catch {
+              setReveal({ error: "Network error. Please try again." });
+            }
           } else {
             // Legacy flow - show immediately
             setReveal(data as RevealResult);
 
             // Poll for card confirmation
-            if (txId) {
+            if (data.txId) {
               let attempts = 0;
               const maxAttempts = 40;
               const pollInterval = setInterval(async () => {

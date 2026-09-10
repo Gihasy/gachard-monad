@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 
-export const maxDuration = 30;
+export const maxDuration = 15; // Reduced - no longer waiting for entropy
 import { getCollection, parseObjectId } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
-import {
-  mintBatch,
-  waitForReceipt,
-  requestPackEntropy,
-  fulfillPackEntropy,
-  getEntropySeed,
-} from "@/lib/blockchain";
-import { buildPackRarities, buildPackRaritiesFromSeed } from "@/lib/odds";
+import { mintBatch, waitForReceipt, requestPackEntropy } from "@/lib/blockchain";
+import { buildPackRarities } from "@/lib/odds";
 import { pickCardTemplate, seedCardTemplates, updateArtworkUrls } from "@/lib/card-templates";
 import { deductCredits, addCredits } from "@/lib/credits";
 import { generateInvoiceId } from "@/lib/invoice";
@@ -90,87 +84,6 @@ const PACK_TYPES: Record<string, { price: number; cards: number; guaranteed: num
   standard: { price: 500, cards: 5, guaranteed: 1 },
   booster: { price: 800, cards: 10, guaranteed: 2 },
 };
-
-/** Background entropy: poll for seed, compute rarities, fulfill pack */
-async function fulfillEntropyPack(
-  txId: string,
-  sequenceNumber: number,
-  userAddr: string,
-  packSize: number,
-  guaranteed: number,
-  contractAddress: string
-) {
-  const txCollection = await getCollection("transactions");
-  const MAX_POLL = 30; // 30 seconds max
-  const POLL_INTERVAL = 1000;
-
-  try {
-    // Poll for seed
-    let seed: string | null = null;
-    for (let i = 0; i < MAX_POLL; i++) {
-      await new Promise(r => setTimeout(r, POLL_INTERVAL));
-      const rawSeed = await getEntropySeed(sequenceNumber);
-      if (rawSeed && rawSeed !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
-        seed = rawSeed;
-        break;
-      }
-    }
-
-    if (!seed) {
-      console.error("[entropy] Seed not received after", MAX_POLL, "seconds");
-      await txCollection.updateOne(
-        { _id: parseObjectId(txId) },
-        { $set: { status: "failed", error: "Entropy timeout", updatedAt: new Date().toISOString() } }
-      );
-      return;
-    }
-
-    // Update tx with seed
-    await txCollection.updateOne(
-      { _id: parseObjectId(txId) },
-      { $set: { entropySeed: seed, updatedAt: new Date().toISOString() } }
-    );
-
-    // Compute rarities deterministically from seed
-    const rarities = buildPackRaritiesFromSeed(seed, packSize, guaranteed);
-
-    // Fulfill pack on-chain
-    const fulfillTxHash = await fulfillPackEntropy(sequenceNumber, userAddr, rarities);
-
-    // Update tx with fulfill hash and rarities
-    await txCollection.updateOne(
-      { _id: parseObjectId(txId) },
-      {
-        $set: {
-          status: "pending",
-          txHash: fulfillTxHash,
-          rarities,
-          updatedAt: new Date().toISOString(),
-        },
-      }
-    );
-
-    // Update card rarities
-    const cardsCollection = await getCollection("cards");
-    for (let i = 0; i < rarities.length; i++) {
-      await cardsCollection.updateOne(
-        { txId, pickIndex: i },
-        { $set: { rarity: rarities[i] } }
-      );
-    }
-
-    // Confirm mint
-    confirmMint(fulfillTxHash, txId, contractAddress).catch(err => {
-      console.error("[entropy] background confirm failed:", err);
-    });
-  } catch (err) {
-    console.error("[entropy] fulfill failed:", err);
-    await txCollection.updateOne(
-      { _id: parseObjectId(txId) },
-      { $set: { status: "failed", error: String(err), updatedAt: new Date().toISOString() } }
-    );
-  }
-}
 
 export async function POST(request: Request) {
   const { packType = "standard" } = await request.json();
@@ -276,15 +189,8 @@ export async function POST(request: Request) {
       }));
       await cardsCollection.insertMany(cardDocs);
 
-      // Background: poll for seed → compute rarities → fulfill → confirm
+      // Return immediately - frontend will call /api/mint/fulfill to complete the process
       const txIdStr = txResult.insertedId.toString();
-      setTimeout(() => {
-        fulfillEntropyPack(txIdStr, sequenceNumber, walletAddress, pack.cards, pack.guaranteed, contractAddress).catch(err => {
-          console.error("[mint] entropy fulfill failed:", err);
-        });
-      }, 100);
-
-      // Return immediately with placeholder cards (will be updated)
       const cards = templates.map((template, i) => ({
         rarity: placeholderRarities[i],
         template: {
@@ -297,6 +203,8 @@ export async function POST(request: Request) {
       return NextResponse.json({
         status: friendlyTxStatus("entropy_pending"),
         txId: generateInvoiceId(txResult.insertedId.toString()),
+        rawTxId: txIdStr,
+        sequenceNumber,
         cards,
         newBalance,
         entropy: true,
