@@ -69,39 +69,57 @@ export default function PacksPage() {
 
           const rawTxId = data.rawTxId;
 
-          // If entropy flow, call fulfill endpoint (blocking)
+          // If entropy flow, poll fulfill endpoint from client
           if (data.entropy && rawTxId) {
             setReveal({
-              cards: data.cards, // placeholder cards for initial display
+              cards: data.cards, // placeholder cards
               entropy: true,
             });
 
-            // Call fulfill endpoint - this blocks until entropy completes
-            try {
-              const fulfillRes = await fetch("/api/mint/fulfill", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ txId: rawTxId }),
-              });
-              const fulfillData = await fulfillRes.json();
+            // Client-side polling loop
+            const maxAttempts = 15; // 15 × 2s = 30s max
+            const pollInterval = 2000; // 2 seconds between attempts
+            let attempts = 0;
+            let fulfilled = false;
 
-              if (fulfillData.success) {
-                setReveal({
-                  cards: fulfillData.cards.map((c: { rarity: number; cardId?: string; tokenId?: number }) => ({
-                    rarity: c.rarity,
-                    tokenId: c.tokenId,
-                  })),
-                  newBalance: data.newBalance,
+            while (attempts < maxAttempts && !fulfilled) {
+              attempts++;
+              try {
+                const fulfillRes = await fetch("/api/mint/fulfill", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ txId: rawTxId }),
                 });
-                window.dispatchEvent(new Event("cards-updated"));
-              } else {
-                setReveal({
-                  error: fulfillData.message || fulfillData.error || "Failed to process randomness",
-                });
+                const fulfillData = await fulfillRes.json();
+
+                if (fulfillData.success) {
+                  fulfilled = true;
+                  setReveal({
+                    cards: fulfillData.cards.map((c: { rarity: number; cardId?: string; tokenId?: number }) => ({
+                      rarity: c.rarity,
+                      tokenId: c.tokenId,
+                    })),
+                    newBalance: data.newBalance,
+                  });
+                  window.dispatchEvent(new Event("cards-updated"));
+                } else if (fulfillData.retry) {
+                  // Seed not ready yet — wait and retry
+                  await new Promise(r => setTimeout(r, pollInterval));
+                } else {
+                  // Real error — don't retry
+                  setReveal({ error: fulfillData.error || "Failed to process randomness" });
+                  break;
+                }
+              } catch {
+                // Network error — wait and retry
+                await new Promise(r => setTimeout(r, pollInterval));
               }
-            } catch {
-              setReveal({ error: "Network error. Please try again." });
+            }
+
+            // Timeout after max attempts
+            if (!fulfilled && !("error" in ({} as { error?: string }))) {
+              setReveal({ error: "Timeout waiting for randomness. Click 'Try Again' to retry." });
             }
           } else {
             // Legacy flow - show immediately

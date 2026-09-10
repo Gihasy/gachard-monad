@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCollection, parseObjectId } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
-import { getEntropySeed, fulfillPackEntropy, waitForReceipt } from "@/lib/blockchain";
+import { getEntropySeed, fulfillPackEntropy, waitForReceipt, getEntropyRarityHash } from "@/lib/blockchain";
 import { buildPackRaritiesFromSeed } from "@/lib/odds";
 import { ethers } from "ethers";
 
-export const maxDuration = 25; // Leave 5s buffer for processing after seed polling
-
-const MAX_POLL_SECONDS = 20; // Poll for seed up to 20 seconds
-const POLL_INTERVAL_MS = 1500; // Check every 1.5 seconds
+export const maxDuration = 10; // Safe for Hobby plan without Fluid Compute
 
 const CARD_MINTED_TOPIC = ethers.id("CardMinted(uint256,address,uint8,uint8)");
 
@@ -39,13 +36,12 @@ export async function POST(request: Request) {
 
     // Check if already fulfilled (idempotent)
     if (tx.status === "confirmed") {
-      // Already done - return existing cards
       const cardsCollection = await getCollection("cards");
       const cards = await cardsCollection.find({ txId }).sort({ pickIndex: 1 }).toArray();
       return NextResponse.json({
         success: true,
         alreadyFulfilled: true,
-        cards: cards.map(c => ({ rarity: c.rarity, cardId: c.cardId })),
+        cards: cards.map(c => ({ rarity: c.rarity, cardId: c.cardId, tokenId: c.tokenId })),
       });
     }
 
@@ -53,7 +49,7 @@ export async function POST(request: Request) {
     if (tx.status !== "entropy_pending") {
       return NextResponse.json({
         success: false,
-        error: `Invalid transaction status: ${tx.status}. Expected: entropy_pending`,
+        error: `Invalid transaction status: ${tx.status}`,
       }, { status: 400 });
     }
 
@@ -62,51 +58,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Missing entropy sequence number" }, { status: 400 });
     }
 
-    const contractAddress = tx.contractAddress || process.env.CONTRACT_ADDRESS?.trim()!;
-    const userAddr = tx.toAddress;
+    // ONE-SHOT check: is seed available on-chain? (NO polling loop)
+    const seed = await getEntropySeed(sequenceNumber);
+    const seedAvailable = seed && seed !== "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-    // Extract pack info from transaction
-    const packSize = tx.rarities?.length || 5;
-    // Count guaranteed based on pack type (stored in transaction)
-    const guaranteed = tx.amount === 800 ? 2 : 1; // 800 Credits = booster (2 guaranteed), else standard (1)
-
-    console.log(`[fulfill] Starting for tx ${txId}, sequence ${sequenceNumber}, packSize ${packSize}, guaranteed ${guaranteed}`);
-
-    // Check if seed already exists on-chain (might have arrived already)
-    let seed: string | null = null;
-    const existingSeed = await getEntropySeed(sequenceNumber);
-    if (existingSeed && existingSeed !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
-      seed = existingSeed;
-      console.log(`[fulfill] Seed already available: ${seed.slice(0, 20)}...`);
-    }
-
-    // Poll for seed if not available yet
-    if (!seed) {
-      console.log(`[fulfill] Polling for seed (max ${MAX_POLL_SECONDS}s)...`);
-      for (let i = 0; i < MAX_POLL_SECONDS; i++) {
-        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-        const rawSeed = await getEntropySeed(sequenceNumber);
-        if (rawSeed && rawSeed !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
-          seed = rawSeed;
-          console.log(`[fulfill] Seed received after ${i * POLL_INTERVAL_MS / 1000}s: ${seed.slice(0, 20)}...`);
-          break;
-        }
-      }
-    }
-
-    // Timeout check
-    if (!seed) {
-      console.error(`[fulfill] Seed not received after ${MAX_POLL_SECONDS}s`);
-      await txCollection.updateOne(
-        { _id: parseObjectId(txId) },
-        { $set: { status: "failed", error: "Entropy timeout", updatedAt: new Date().toISOString() } }
-      );
+    if (!seedAvailable) {
+      // Seed not ready yet — tell client to retry
       return NextResponse.json({
         success: false,
-        error: "timeout",
-        message: "Entropy seed not received in time. Try again.",
+        retry: true,
+        status: "waiting_for_seed",
+        message: "Entropy seed not available yet",
       });
     }
+
+    // Seed is available — proceed with fulfillment
+    const contractAddress = tx.contractAddress || process.env.CONTRACT_ADDRESS?.trim()!;
+    const userAddr = tx.toAddress;
+    const packSize = tx.rarities?.length || 5;
+    const guaranteed = tx.amount === 800 ? 2 : 1; // 800 Credits = booster (2 guaranteed)
 
     // Update tx with seed
     await txCollection.updateOne(
@@ -116,23 +86,18 @@ export async function POST(request: Request) {
 
     // Compute rarities deterministically from seed
     const rarities = buildPackRaritiesFromSeed(seed, packSize, guaranteed);
-    console.log(`[fulfill] Computed rarities: [${rarities.join(",")}]`);
 
-    // Check if this transaction was already fulfilled on-chain (idempotent check)
-    const { getEntropyRarityHash } = await import("@/lib/blockchain");
+    // Check if already fulfilled on-chain (idempotent)
     const existingHash = await getEntropyRarityHash(sequenceNumber);
-    const isAlreadyFulfilled = existingHash && existingHash !== "0x0000000000000000000000000000000000000000000000000000000000000000";
+    const alreadyFulfilledOnChain = existingHash && existingHash !== "0x0000000000000000000000000000000000000000000000000000000000000000";
 
     let fulfillTxHash: string;
 
-    if (isAlreadyFulfilled) {
-      console.log(`[fulfill] Already fulfilled on-chain, skipping fulfillPack call`);
-      fulfillTxHash = tx.txHash || ""; // Use existing hash
+    if (alreadyFulfilledOnChain) {
+      fulfillTxHash = tx.txHash || "";
     } else {
-      // Fulfill pack on-chain
-      console.log(`[fulfill] Calling fulfillPack on-chain...`);
+      // Fulfill pack on-chain (this takes 1-3 seconds for Monad block confirmation)
       fulfillTxHash = await fulfillPackEntropy(sequenceNumber, userAddr, rarities);
-      console.log(`[fulfill] Fulfill tx: ${fulfillTxHash}`);
     }
 
     // Update tx with fulfill hash and rarities
@@ -148,7 +113,7 @@ export async function POST(request: Request) {
       }
     );
 
-    // Update card rarities in database
+    // Update card rarities
     const cardsCollection = await getCollection("cards");
     for (let i = 0; i < rarities.length; i++) {
       await cardsCollection.updateOne(
@@ -157,9 +122,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Confirm mint (wait for on-chain confirmation)
-    console.log(`[fulfill] Confirming mint on-chain...`);
-    const receipt = await waitForReceipt(fulfillTxHash, 15, 1000);
+    // Wait for on-chain confirmation (1-3 blocks on Monad)
+    const receipt = await waitForReceipt(fulfillTxHash, 10, 1000);
 
     if (receipt && receipt.status === 1) {
       // Parse CardMinted events
@@ -188,8 +152,6 @@ export async function POST(request: Request) {
         { $set: { status: "confirmed", tokenIds: confirmedTokenIds, updatedAt: new Date().toISOString() } }
       );
 
-      console.log(`[fulfill] Confirmed! ${confirmedTokenIds.length} cards minted`);
-
       // Return final cards
       const finalCards = await cardsCollection.find({ txId }).sort({ pickIndex: 1 }).toArray();
       return NextResponse.json({
@@ -198,7 +160,7 @@ export async function POST(request: Request) {
         tokenIds: confirmedTokenIds,
       });
     } else {
-      console.error(`[fulfill] Mint confirmation failed`);
+      // Mint confirmation failed
       await txCollection.updateOne(
         { _id: parseObjectId(txId) },
         { $set: { status: "failed", error: "Mint confirmation failed", updatedAt: new Date().toISOString() } }
