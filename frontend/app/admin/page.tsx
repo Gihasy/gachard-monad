@@ -174,6 +174,7 @@ export default function AdminPage() {
   const [pendingMeta, setPendingMeta] = useState({ total: 0, staleCount: 0, avgPendingMinutes: 0 });
   const [supporters, setSupporters] = useState<AdminSupporter[]>([]);
   const [creatorApps, setCreatorApps] = useState<CreatorApp[]>([]);
+  const [balances, setBalances] = useState<{ adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,8 +196,9 @@ export default function AdminPage() {
       fetch("/api/admin/pending-cards", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/admin/supporters", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/admin/creator-applications", { credentials: "include" }).then((r) => r.json()),
+      fetch("/api/admin/balances", { credentials: "include" }).then((r) => r.json()),
     ])
-      .then(([usersData, txsData, cardsData, printsData, pendingData, supportersData, creatorsData]) => {
+      .then(([usersData, txsData, cardsData, printsData, pendingData, supportersData, creatorsData, balancesData]) => {
         setUsers(usersData.users ?? []);
         setTxs(txsData.transactions ?? []);
         setCards(cardsData.cards ?? []);
@@ -205,6 +207,9 @@ export default function AdminPage() {
         setPendingMeta({ total: pendingData.total ?? 0, staleCount: pendingData.staleCount ?? 0, avgPendingMinutes: pendingData.avgPendingMinutes ?? 0 });
         setSupporters(supportersData.supporters ?? []);
         setCreatorApps(creatorsData.applications ?? []);
+        if (balancesData && !balancesData.error) {
+          setBalances(balancesData);
+        }
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -400,12 +405,15 @@ export default function AdminPage() {
             </>
           )}
           {tab === "health" && (
-            <HealthTable
-              pendingCards={pendingCards}
-              meta={pendingMeta}
-              confirmingAll={confirmingAll}
-              onConfirmAll={handleConfirmAll}
-            />
+            <>
+              {balances && <BalanceCards balances={balances} />}
+              <HealthTable
+                pendingCards={pendingCards}
+                meta={pendingMeta}
+                confirmingAll={confirmingAll}
+                onConfirmAll={handleConfirmAll}
+              />
+            </>
           )}
           {tab === "supporters" && <SupportersTable supporters={supporters} />}
           {tab === "dismantle" && <DismantleTable txs={txs.filter((t) => t.type === "dismantled")} cards={cards} users={users} />}
@@ -1099,6 +1107,80 @@ function HealthTable({
           ))}
         </TableShell>
       )}
+    </div>
+  );
+}
+
+/* ─── Balance Cards ─── */
+function BalanceCards({ balances }: { balances: { adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string } } }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const formatMON = (val: string) => {
+    const num = parseFloat(val);
+    if (num < 0.001) return "0";
+    return num.toFixed(4);
+  };
+
+  const getBalanceColor = (val: string, threshold: number) => {
+    const num = parseFloat(val);
+    if (num < threshold * 0.2) return "#ff6bba";
+    if (num < threshold) return "var(--aurora-gold)";
+    return "var(--electric-blue)";
+  };
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+      {/* Admin Wallet */}
+      <div className="glass p-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[0.6rem] uppercase tracking-widest text-white/40">Admin Wallet (Gas)</p>
+          <span className="text-[0.55rem] px-2 py-0.5 rounded-full" style={{ background: "rgba(0,204,255,0.15)", color: "var(--electric-blue)" }}>Sponsor</span>
+        </div>
+        <p className="font-display text-2xl mb-2" style={{ color: getBalanceColor(balances.adminWallet.balanceMON, 0.5) }}>
+          {formatMON(balances.adminWallet.balanceMON)} <span className="text-sm text-white/40">MON</span>
+        </p>
+        <button
+          onClick={() => copyToClipboard(balances.adminWallet.address, "admin")}
+          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors font-mono"
+          title="Copy address"
+        >
+          {balances.adminWallet.address.slice(0, 8)}...{balances.adminWallet.address.slice(-6)}
+          {copied === "admin" ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--electric-blue)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l4 4 10-10" /></svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+          )}
+        </button>
+      </div>
+
+      {/* PackEntropy */}
+      <div className="glass p-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[0.6rem] uppercase tracking-widest text-white/40">PackEntropy (Pyth Fee)</p>
+          <span className="text-[0.55rem] px-2 py-0.5 rounded-full" style={{ background: "rgba(184,172,255,0.15)", color: "var(--cosmic-violet)" }}>Entropy</span>
+        </div>
+        <p className="font-display text-2xl mb-2" style={{ color: getBalanceColor(balances.packEntropy.balanceMON, 0.2) }}>
+          {formatMON(balances.packEntropy.balanceMON)} <span className="text-sm text-white/40">MON</span>
+        </p>
+        <button
+          onClick={() => copyToClipboard(balances.packEntropy.address, "entropy")}
+          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors font-mono"
+          title="Copy address"
+        >
+          {balances.packEntropy.address.slice(0, 8)}...{balances.packEntropy.address.slice(-6)}
+          {copied === "entropy" ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--cosmic-violet)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l4 4 10-10" /></svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+          )}
+        </button>
+      </div>
     </div>
   );
 }
