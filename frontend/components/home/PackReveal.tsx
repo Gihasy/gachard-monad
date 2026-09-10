@@ -153,7 +153,7 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
     );
   }
 
-  const isEntropy = "cards" in result && result.entropy === true;
+  const isEntropy = "cards" in result && (result as RevealSuccess).entropy === true;
 
   const handleOpen = () => {
     if (phase !== "ready") return;
