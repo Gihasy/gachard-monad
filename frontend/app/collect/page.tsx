@@ -60,45 +60,107 @@ export default function PacksPage() {
         });
         const data = await res.json();
         if (res.ok) {
-          setReveal(data as RevealResult);
-          // Refresh balance
+          // Refresh balance immediately
           fetch("/api/credits", { credentials: "include" })
             .then((r) => r.json())
             .then((d) => setBalance(d.balance ?? 0))
             .catch(() => {});
           window.dispatchEvent(new Event("balance-change"));
 
-          // Poll for card confirmation every 3 seconds for up to 2 minutes
           const txId = data.txId;
-          if (txId) {
-            let attempts = 0;
-            const maxAttempts = 40; // 40 * 3s = 120s
-            const pollInterval = setInterval(async () => {
-              attempts++;
-              if (attempts >= maxAttempts) {
-                clearInterval(pollInterval);
+
+          // If entropy flow, show requesting state and poll for real rarities
+          if (data.entropy && txId) {
+            setReveal({
+              cards: data.cards, // placeholder cards for initial display
+              entropy: true,
+            });
+
+            // Poll for entropy completion (cards with real rarities)
+            let entropyAttempts = 0;
+            const maxEntropyAttempts = 30; // 30 * 2s = 60s max
+            const entropyPoll = setInterval(async () => {
+              entropyAttempts++;
+              if (entropyAttempts >= maxEntropyAttempts) {
+                clearInterval(entropyPoll);
+                setReveal({ error: "Timeout waiting for randomness. Please try again." });
                 return;
               }
               try {
-                // Fetch cards to trigger auto-reconciliation
-                const cardsRes = await fetch("/api/cards", { credentials: "include" });
-                if (cardsRes.ok) {
-                  const cardsData = await cardsRes.json();
-                  // Check if any cards from this mint are still pending
-                  const hasPending = cardsData.cards?.some(
-                    (c: { status: string; createdAt: string }) =>
-                      c.status === "pending" && new Date(c.createdAt).getTime() > Date.now() - 300000
-                  );
-                  if (!hasPending) {
-                    clearInterval(pollInterval);
-                    // Update reveal data with confirmed cards
-                    window.dispatchEvent(new Event("cards-updated"));
+                const txRes = await fetch(`/api/transactions?txId=${txId}`, { credentials: "include" });
+                if (txRes.ok) {
+                  const txData = await txRes.json();
+                  const rawStatus = txData.rawStatus;
+
+                  if (rawStatus === "pending" || rawStatus === "confirmed") {
+                    // Entropy fulfilled - fetch real card data
+                    clearInterval(entropyPoll);
+
+                    const cardsRes = await fetch("/api/cards", { credentials: "include" });
+                    if (cardsRes.ok) {
+                      const cardsData = await cardsRes.json();
+                      // Filter cards from this transaction
+                      const mintCards = cardsData.cards?.filter(
+                        (c: { txId: string }) => c.txId === txId
+                      );
+
+                      if (mintCards && mintCards.length > 0) {
+                        // Check if cards have real rarities (not all 0)
+                        const hasRealRarities = mintCards.some((c: { rarity: number }) => c.rarity > 0);
+
+                        if (hasRealRarities) {
+                          setReveal({
+                            cards: mintCards.map((c: { rarity: number; templateId: string }) => ({
+                              rarity: c.rarity,
+                              template: { id: c.templateId },
+                            })),
+                            entropy: false,
+                          });
+                          window.dispatchEvent(new Event("cards-updated"));
+                        }
+                      }
+                    }
+                  } else if (rawStatus === "failed") {
+                    clearInterval(entropyPoll);
+                    setReveal({ error: "Randomness request failed. Credits refunded." });
                   }
                 }
               } catch {
                 // Ignore polling errors
               }
-            }, 3000);
+            }, 2000);
+          } else {
+            // Legacy flow - show immediately
+            setReveal(data as RevealResult);
+
+            // Poll for card confirmation
+            if (txId) {
+              let attempts = 0;
+              const maxAttempts = 40;
+              const pollInterval = setInterval(async () => {
+                attempts++;
+                if (attempts >= maxAttempts) {
+                  clearInterval(pollInterval);
+                  return;
+                }
+                try {
+                  const cardsRes = await fetch("/api/cards", { credentials: "include" });
+                  if (cardsRes.ok) {
+                    const cardsData = await cardsRes.json();
+                    const hasPending = cardsData.cards?.some(
+                      (c: { status: string; createdAt: string }) =>
+                        c.status === "pending" && new Date(c.createdAt).getTime() > Date.now() - 300000
+                    );
+                    if (!hasPending) {
+                      clearInterval(pollInterval);
+                      window.dispatchEvent(new Event("cards-updated"));
+                    }
+                  }
+                } catch {
+                  // Ignore polling errors
+                }
+              }, 3000);
+            }
           }
         } else {
           setReveal({ error: data.error || "Failed to open pack" });

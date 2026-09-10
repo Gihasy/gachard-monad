@@ -101,7 +101,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const { rawId: _ri, rawStatus: _rs, ...safe } = tx;
+    const { rawId: _ri, ...safe } = tx;
     return NextResponse.json(safe);
   } catch (error) {
     console.error("Transaction status error:", error);
