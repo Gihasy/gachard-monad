@@ -281,6 +281,9 @@ export default function AdminPage() {
       title={<span className="text-gradient-aurora">Admin Console</span>}
       description="Transparent proof of blockchain integration — view wallet addresses, verify on-chain transactions via Monad Explorer, and track every card's journey from mint to physical redemption."
     >
+      {/* Balance Cards */}
+      {balances && <BalanceCards balances={balances} />}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-8 gap-4 mb-8">
         <SummaryCard label="Cards" value={cards.length} color="var(--aurora-pink)" active={tab === "cards"} onClick={() => setTab("cards")} />
@@ -405,15 +408,12 @@ export default function AdminPage() {
             </>
           )}
           {tab === "health" && (
-            <>
-              {balances && <BalanceCards balances={balances} />}
-              <HealthTable
-                pendingCards={pendingCards}
-                meta={pendingMeta}
-                confirmingAll={confirmingAll}
-                onConfirmAll={handleConfirmAll}
-              />
-            </>
+            <HealthTable
+              pendingCards={pendingCards}
+              meta={pendingMeta}
+              confirmingAll={confirmingAll}
+              onConfirmAll={handleConfirmAll}
+            />
           )}
           {tab === "supporters" && <SupportersTable supporters={supporters} />}
           {tab === "dismantle" && <DismantleTable txs={txs.filter((t) => t.type === "dismantled")} cards={cards} users={users} />}
