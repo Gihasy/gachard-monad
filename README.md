@@ -102,13 +102,13 @@ gachard-monad/
 │   ├── hooks/         # React hooks
 │   └── public/        # Static assets
 ├── contracts/         # Solidity smart contracts (Foundry)
-│   ├── src/           # GachardCard.sol (ERC-1155)
-│   ├── test/          # 54 test cases
+│   ├── src/           # GachardCard.sol + PackEntropy.sol
+│   ├── test/          # 76 test cases
 │   └── script/        # Deploy scripts
 ├── docs/              # Documentation
 ├── scripts/           # Deployment scripts
 ├── MEMORY.md          # Project status & rules
-├── DECISIONS.md       # Architecture decisions (27 ADRs)
+├── DECISIONS.md       # Architecture decisions (28 ADRs)
 └── vercel.json        # Vercel deployment config
 ```
 
@@ -154,10 +154,12 @@ cd frontend && npx tsx scripts/clean-slate.ts
 ## Blockchain Verification
 
 All blockchain transactions are verifiable on Monad Explorer:
-- **Smart Contract**: [0x712b70CbD3854A11f18839068483114D0068b4FC](https://testnet.monadvision.com/address/0x712b70CbD3854A11f18839068483114D0068b4FC)
+- **GachardCard**: [0x2a05a2e3b0e7355b97de593e354063e9474c9d08](https://testnet.monadvision.com/address/0x2a05a2e3b0e7355b97de593e354063e9474c9d08)
+- **PackEntropy**: [0x6B53C35e8baBaaBe4DD725573C3f612121764542](https://testnet.monadvision.com/address/0x6B53C35e8baBaaBe4DD725573C3f612121764542)
 - **Chain**: Monad Testnet (Chain ID 10143)
 - **Explorer**: https://testnet.monadvision.com
 - **Verification**: Sourcify exact_match ✅
+- **Pack Verification**: `/api/verify/pack/[txHash]` — verify rarity fairness on-chain
 
 Admin Console displays:
 - All transactions with clickable txHash links to Monad Explorer

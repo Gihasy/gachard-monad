@@ -31,9 +31,10 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 ## Technical Highlights
 
 ### Smart Contract
-- **Contract Address:** `0x712b70CbD3854A11f18839068483114D0068b4FC`
+- **GachardCard Address:** `0x2a05a2e3b0e7355b97de593e354063e9474c9d08`
+- **PackEntropy Address:** `0x6B53C35e8baBaaBe4DD725573C3f612121764542`
 - **Standard:** ERC-1155 (one-token-per-instance)
-- **Compiler:** Solc 0.8.28 + EVM cancun
+- **Compiler:** Solc 0.8.28 + EVM cancun + via_ir
 - **Verification:** Sourcify exact_match on MonadVision
 - **Tests:** 76/76 passed (Foundry) — covering mint, print, redeem, transfer, burn, verification, Pyth Entropy
 
@@ -68,7 +69,9 @@ Monad's high throughput (~10,000 TPS) and low latency (~1s block time) are essen
 |----------|-----|
 | Live Demo | https://gachard-monad.vercel.app |
 | Admin Console | https://gachard-monad.vercel.app/admin |
-| Smart Contract (Verified) | https://testnet.monadvision.com/address/0x712b70CbD3854A11f18839068483114D0068b4FC |
+| GachardCard (Verified) | https://testnet.monadvision.com/address/0x2a05a2e3b0e7355b97de593e354063e9474c9d08 |
+| PackEntropy (Verified) | https://testnet.monadvision.com/address/0x6B53C35e8baBaaBe4DD725573C3f612121764542 |
+| Pack Verification | https://gachard-monad.vercel.app/api/verify/pack/[txHash] |
 | GitHub | https://github.com/Gihasy/Gachard-Monad |
 
 ---

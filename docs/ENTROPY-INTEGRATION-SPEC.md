@@ -265,6 +265,11 @@ curl -s -X POST https://testnet-rpc.monad.xyz \
 ### Verification Source
 MonadScan on-chain data: https://testnet.monadscan.com/address/0x825c0390f379c631f3cf11a82a37d20bddf93c07
 
+### Deployed Contracts (Gachard)
+- **GachardCard**: `0x2a05a2e3b0e7355b97de593e354063e9474c9d08` (9 Sep 2026, Sourcify verified)
+- **PackEntropy**: `0x6B53C35e8baBaaBe4DD725573C3f612121764542` (9 Sep 2026, Sourcify verified, 1 MON funded)
+- **GachardCard (OLD — deprecated)**: `0x712b70CbD3854A11f18839068483114D0068b4FC`
+
 ---
 
 ## 11. Shuffle Strategy
