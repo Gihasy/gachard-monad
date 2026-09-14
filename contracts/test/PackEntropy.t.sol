@@ -15,6 +15,8 @@ contract PackEntropyTest is Test {
     address public user1 = address(0x1);
     address public provider = address(0xAAAA);
 
+    event PackFulfilled(uint64 indexed sequenceNumber, address indexed userAddr, bytes32 rarityHash);
+
     function setUp() public {
         card = new GachardCard();
         mockEntropy = new MockEntropy(provider);
@@ -165,6 +167,46 @@ contract PackEntropyTest is Test {
         packEntropy.fulfillPack(seq, user1, rarities);
 
         vm.expectRevert("Already fulfilled");
+        packEntropy.fulfillPack(seq, user1, rarities);
+    }
+
+    function test_fulfillPack_sets_requests_fulfilled_true() public {
+        uint64 seq = _requestAndReveal();
+
+        // Before fulfill: fulfilled should be false
+        (, , , bool fulfilledBefore) = packEntropy.requests(seq);
+        assertFalse(fulfilledBefore);
+
+        uint8[] memory rarities = new uint8[](5);
+        rarities[0] = 1; // Rare
+        rarities[1] = 0;
+        rarities[2] = 0;
+        rarities[3] = 0;
+        rarities[4] = 0;
+
+        packEntropy.fulfillPack(seq, user1, rarities);
+
+        // After fulfill: fulfilled should be true, AND rarityHash should be set
+        (, , , bool fulfilledAfter) = packEntropy.requests(seq);
+        assertTrue(fulfilledAfter);
+        assertTrue(packEntropy.getRarityHash(seq) != bytes32(0));
+    }
+
+    function test_fulfillPack_emits_PackFulfilled_event() public {
+        uint64 seq = _requestAndReveal();
+
+        uint8[] memory rarities = new uint8[](5);
+        rarities[0] = 1; // Rare
+        rarities[1] = 0;
+        rarities[2] = 0;
+        rarities[3] = 0;
+        rarities[4] = 0;
+
+        bytes32 expectedHash = keccak256(abi.encodePacked(packEntropy.getSeed(seq), rarities));
+
+        vm.expectEmit(true, true, false, true);
+        emit PackFulfilled(seq, user1, expectedHash);
+
         packEntropy.fulfillPack(seq, user1, rarities);
     }
 

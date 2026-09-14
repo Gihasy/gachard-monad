@@ -96,9 +96,14 @@ export default function PacksPage() {
                 if (fulfillData.success) {
                   fulfilled = true;
                   setReveal({
-                    cards: fulfillData.cards.map((c: { rarity: number; cardId?: string; tokenId?: number }) => ({
+                    cards: fulfillData.cards.map((c: { rarity: number; cardId?: string; tokenId?: number; template?: { templateId?: string; name?: string; artworkUrl?: string } }) => ({
                       rarity: c.rarity,
                       tokenId: c.tokenId,
+                      template: c.template ? {
+                        id: c.template.templateId,
+                        name: c.template.name,
+                        artworkUrl: c.template.artworkUrl,
+                      } : undefined,
                     })),
                     newBalance: data.newBalance,
                   });
@@ -108,7 +113,7 @@ export default function PacksPage() {
                   await new Promise(r => setTimeout(r, pollInterval));
                 } else {
                   // Real error — don't retry
-                  setReveal({ error: fulfillData.error || "Failed to process randomness" });
+                  setReveal({ error: fulfillData.error || "Failed to finalize your cards" });
                   break;
                 }
               } catch {
@@ -119,7 +124,7 @@ export default function PacksPage() {
 
             // Timeout after max attempts
             if (!fulfilled && !("error" in ({} as { error?: string }))) {
-              setReveal({ error: "Timeout waiting for randomness. Click 'Try Again' to retry." });
+              setReveal({ error: "Taking longer than expected. Please try again." });
             }
           } else {
             // Legacy flow - show immediately

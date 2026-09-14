@@ -3,7 +3,7 @@
  */
 
 const TX_STATUS_MAP: Record<string, string> = {
-  entropy_pending: "Requesting Randomness",
+  entropy_pending: "Finalizing",
   pending: "Processing",
   confirmed: "Success",
   failed: "Failed",

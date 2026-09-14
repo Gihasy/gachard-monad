@@ -1,15 +1,106 @@
 import { NextResponse } from "next/server";
 import { getCollection, parseObjectId } from "@/lib/mongodb";
 import { confirmTransaction } from "@/lib/transactions";
-import { getEntropySeed, fulfillPackEntropy, getEntropyRarityHash } from "@/lib/blockchain";
+import { getEntropySeed, fulfillPackEntropy, getEntropyRequestData, getFulfillTxHash } from "@/lib/blockchain";
 import { buildPackRaritiesFromSeed } from "@/lib/odds";
+import { pickCardTemplate } from "@/lib/card-templates";
+import { ethers } from "ethers";
 
 export const maxDuration = 10; // Safe for Hobby plan
+
+const CARD_MINTED_TOPIC = ethers.id("CardMinted(uint256,address,uint8,uint8)");
+
+/**
+ * Sync an already-fulfilled-on-chain transaction to MongoDB.
+ * Used when fulfillPack() succeeded but MongoDB wasn't updated (race condition).
+ */
+async function syncFulfilledToMongo(
+  txId: string,
+  sequenceNumber: number,
+  contractAddress: string,
+) {
+  const txCollection = await getCollection("transactions");
+  const cardsCollection = await getCollection("cards");
+
+  const [requestData, seed] = await Promise.all([
+    getEntropyRequestData(sequenceNumber),
+    getEntropySeed(sequenceNumber),
+  ]);
+
+  const { packSize, guaranteed } = requestData;
+  const rarities = buildPackRaritiesFromSeed(seed, packSize, guaranteed);
+
+  // Try to find fulfill txHash from PackFulfilled event
+  let fulfillTxHash: string | null = null;
+  try {
+    fulfillTxHash = await getFulfillTxHash(sequenceNumber);
+  } catch (e) {
+    console.warn(`[confirm-all] recover: failed to get fulfill txHash for seq ${sequenceNumber}:`, e);
+  }
+
+  // Parse CardMinted events from fulfill receipt (if txHash available)
+  const confirmedTokenIds: number[] = [];
+  let mintIndex = 0;
+  const cleanContractAddress = contractAddress.trim().toLowerCase();
+
+  if (fulfillTxHash) {
+    try {
+      const provider = new ethers.JsonRpcProvider(process.env.RPC_URL?.trim());
+      const receipt = await provider.getTransactionReceipt(fulfillTxHash);
+      if (receipt && receipt.status === 1) {
+        for (const log of receipt.logs) {
+          if (log.topics[0] === CARD_MINTED_TOPIC && log.address.toLowerCase() === cleanContractAddress) {
+            const tokenId = parseInt(log.topics[1], 16);
+            const logData = log.data.slice(2);
+            const rarity = parseInt(logData.slice(64, 128), 16);
+            confirmedTokenIds.push(tokenId);
+
+            await cardsCollection.updateOne(
+              { txId, pickIndex: mintIndex },
+              { $set: { tokenId, status: "Digital", rarity, lastOnChainSync: new Date().toISOString() } }
+            );
+            mintIndex++;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[confirm-all] recover: failed to parse fulfill receipt for seq ${sequenceNumber}:`, e);
+    }
+  }
+
+  // Update card rarities and templateId (even if tokenIds weren't recovered)
+  for (let i = 0; i < rarities.length; i++) {
+    const template = await pickCardTemplate(rarities[i]);
+    await cardsCollection.updateOne(
+      { txId, pickIndex: i },
+      { $set: { rarity: rarities[i], templateId: template.templateId } }
+    );
+  }
+
+  // Update transaction — on-chain fulfilled means we can mark confirmed
+  const updateFields: Record<string, unknown> = {
+    status: "confirmed",
+    entropySeed: seed,
+    rarities,
+    tokenIds: confirmedTokenIds,
+    updatedAt: new Date().toISOString(),
+  };
+  if (fulfillTxHash) {
+    updateFields.txHash = fulfillTxHash;
+  }
+
+  await txCollection.updateOne(
+    { _id: parseObjectId(txId) },
+    { $set: updateFields }
+  );
+
+  return { fulfilled: true, fulfillTxHash: fulfillTxHash || undefined, rarities, tokenIds: confirmedTokenIds };
+}
 
 /**
  * Admin endpoint: confirm all pending transactions.
  * - For "pending" status: calls confirmTransaction() to check on-chain receipt
- * - For "entropy_pending" status: ONE-SHOT check if seed available, fulfill if yes
+ * - For "entropy_pending" status: on-chain-first idempotency, then fulfill if needed
  */
 export async function POST() {
   try {
@@ -23,6 +114,7 @@ export async function POST() {
       newStatus?: string;
       fulfillTxHash?: string;
       rarities?: number[];
+      synced?: boolean;
       error?: string;
     }> = [];
 
@@ -41,7 +133,7 @@ export async function POST() {
       }
     }
 
-    // Process "entropy_pending" transactions (entropy flow - one-shot check)
+    // Process "entropy_pending" transactions (entropy flow - on-chain-first idempotency)
     const entropyPendingTxs = await txCollection
       .find({ status: "entropy_pending" })
       .toArray();
@@ -59,18 +151,29 @@ export async function POST() {
         continue;
       }
 
+      const contractAddress = tx.contractAddress || process.env.CONTRACT_ADDRESS?.trim()!;
+
       try {
-        // ONE-SHOT check: is seed available? (NO polling)
-        const seed = await getEntropySeed(sequenceNumber);
-        if (!seed || seed === "0x0000000000000000000000000000000000000000000000000000000000000000") {
-          results.push({ txId, type: "entropy_pending", skipped: true, skipReason: "waiting_for_seed" });
+        // ON-CHAIN-FIRST: check if already fulfilled on-chain
+        const requestData = await getEntropyRequestData(sequenceNumber);
+        if (requestData.fulfilled) {
+          console.log(`[confirm-all] Sequence ${sequenceNumber} already fulfilled on-chain, syncing...`);
+          const syncResult = await syncFulfilledToMongo(txId, sequenceNumber, contractAddress);
+          results.push({
+            txId,
+            type: "entropy_pending",
+            fulfilled: true,
+            synced: true,
+            fulfillTxHash: syncResult.fulfillTxHash,
+            rarities: syncResult.rarities,
+          });
           continue;
         }
 
-        // Check if already fulfilled on-chain
-        const existingHash = await getEntropyRarityHash(sequenceNumber);
-        if (existingHash && existingHash !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
-          results.push({ txId, type: "entropy_pending", skipped: true, skipReason: "already_fulfilled_on_chain" });
+        // Check if seed is available
+        const seed = await getEntropySeed(sequenceNumber);
+        if (!seed || seed === "0x0000000000000000000000000000000000000000000000000000000000000000") {
+          results.push({ txId, type: "entropy_pending", skipped: true, skipReason: "waiting_for_seed" });
           continue;
         }
 
@@ -79,9 +182,28 @@ export async function POST() {
         const guaranteed = tx.amount === 800 ? 2 : 1;
         const rarities = buildPackRaritiesFromSeed(seed, packSize, guaranteed);
 
-        // Fulfill on-chain
-        const userAddr = tx.toAddress;
-        const fulfillTxHash = await fulfillPackEntropy(sequenceNumber, userAddr, rarities);
+        // Fulfill on-chain — with race condition catch
+        let fulfillTxHash: string;
+        try {
+          fulfillTxHash = await fulfillPackEntropy(sequenceNumber, tx.toAddress, rarities);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (errMsg.includes("Already fulfilled")) {
+            // Race condition: another request fulfilled it between our check and this call
+            console.warn(`[confirm-all] Race condition: seq ${sequenceNumber} already fulfilled, syncing...`);
+            const syncResult = await syncFulfilledToMongo(txId, sequenceNumber, contractAddress);
+            results.push({
+              txId,
+              type: "entropy_pending",
+              fulfilled: true,
+              synced: true,
+              fulfillTxHash: syncResult.fulfillTxHash,
+              rarities: syncResult.rarities,
+            });
+            continue;
+          }
+          throw err; // Re-throw non-idempotent errors
+        }
 
         // Update transaction
         await txCollection.updateOne(
@@ -97,12 +219,13 @@ export async function POST() {
           }
         );
 
-        // Update card rarities
+        // Update card rarities and templateId
         const cardsCollection = await getCollection("cards");
         for (let i = 0; i < rarities.length; i++) {
+          const template = await pickCardTemplate(rarities[i]);
           await cardsCollection.updateOne(
             { txId, pickIndex: i },
-            { $set: { rarity: rarities[i] } }
+            { $set: { rarity: rarities[i], templateId: template.templateId } }
           );
         }
 

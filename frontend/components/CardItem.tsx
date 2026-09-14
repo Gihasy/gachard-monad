@@ -6,6 +6,7 @@ import QRScanner from "./QRScanner";
 import CardDetailModal from "./CardDetailModal";
 import ListingModal from "./ListingModal";
 import SellButton from "./SellButton";
+import ProgressIndicator from "./ProgressIndicator";
 
 const RARITY_COLORS = [
   "var(--rarity-common)",
@@ -349,16 +350,7 @@ export default function CardItem({
                   {printing ? "…" : "Print"}
                 </button>
               ) : (
-                <div
-                  className="text-center text-[0.6rem] uppercase tracking-widest py-1.5 rounded-lg"
-                  style={{
-                    background: "rgba(255,255,255,0.02)",
-                    border: "1px solid rgba(255,255,255,0.05)",
-                    color: "rgba(255,255,255,0.25)",
-                  }}
-                >
-                  Pending…
-                </div>
+                <ProgressIndicator label="Verifying..." />
               )
             )}
             {isInProgress && requestedAt && (

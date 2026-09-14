@@ -258,6 +258,7 @@ export async function burnCard(tokenId: number, ownerAddress: string): Promise<s
 const PACK_ENTROPY_ABI = [
   "function requestPack(uint256 packId, address userAddr, uint8 packSize, uint8 guaranteed) external returns (uint64 sequenceNumber)",
   "function fulfillPack(uint64 sequenceNumber, address userAddr, uint8[] calldata rarities) external",
+  "function requests(uint64) external view returns (address userAddr, uint8 packSize, uint8 guaranteed, bool fulfilled)",
   "function getSeed(uint64 sequenceNumber) external view returns (bytes32)",
   "function getRarityHash(uint64 sequenceNumber) external view returns (bytes32)",
   "function getBalance() external view returns (uint256)",
@@ -333,4 +334,50 @@ export async function getEntropyBalance(): Promise<bigint> {
     const contract = getPackEntropyContract();
     return contract.getBalance();
   }, "getEntropyBalance");
+}
+
+export async function getEntropyRequestData(sequenceNumber: number): Promise<{
+  userAddr: string;
+  packSize: number;
+  guaranteed: number;
+  fulfilled: boolean;
+}> {
+  return withRetry(async () => {
+    const contract = getPackEntropyContract();
+    const result = await contract.requests(sequenceNumber);
+    return {
+      userAddr: result[0] as string,
+      packSize: Number(result[1]),
+      guaranteed: Number(result[2]),
+      fulfilled: result[3] as boolean,
+    };
+  }, `requests(${sequenceNumber})`);
+}
+
+export async function getFulfillTxHash(sequenceNumber: number): Promise<string | null> {
+  return withRetry(async () => {
+    const contract = getPackEntropyContract();
+    const provider = getProvider();
+    const currentBlock = await provider.getBlockNumber();
+    const filter = contract.filters.PackFulfilled(sequenceNumber);
+
+    // Monad testnet limits eth_getLogs to 100 block range
+    // Search backwards in 100-block chunks, up to ~2000 blocks
+    const chunkSize = 100;
+    const maxBlocks = 2000;
+    for (let offset = 0; offset < maxBlocks; offset += chunkSize) {
+      const fromBlock = Math.max(0, currentBlock - offset - chunkSize + 1);
+      const toBlock = currentBlock - offset;
+      try {
+        const events = await contract.queryFilter(filter, fromBlock, toBlock);
+        if (events.length > 0 && 'transactionHash' in events[0]) {
+          return events[0].transactionHash;
+        }
+      } catch {
+        // RPC error on this chunk — skip and try next
+      }
+      if (fromBlock === 0) break;
+    }
+    return null;
+  }, `PackFulfilled(${sequenceNumber}) event`);
 }

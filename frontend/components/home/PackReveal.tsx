@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import ProgressIndicator from "@/components/ProgressIndicator";
 
 const RARITY_COLORS = [
   "var(--rarity-common)",
@@ -206,12 +207,12 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
         <div className="text-center px-4">
           <h2 className="font-display uppercase text-2xl sm:text-3xl md:text-4xl mb-2">
             <span className="text-gradient-aurora">
-              {phase === "requesting" ? "Generating Randomness" : "Pack Ready"}
+              {phase === "requesting" ? "Finalizing Your Cards" : "Pack Ready"}
             </span>
           </h2>
           <p className="text-white/50 text-xs sm:text-sm mb-4 sm:mb-8">
             {phase === "requesting"
-              ? "Verifying on-chain randomness…"
+              ? "Almost there — preparing your cards…"
               : phase === "bursting"
                 ? "Unsealing…"
                 : "Your pack is ready to open"}
@@ -262,6 +263,10 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
               <span className="chip mt-1.5 sm:mt-2 mx-auto"><span className="chip-dot" />Sealed</span>
             </div>
           </div>
+
+          {phase === "requesting" && (
+            <ProgressIndicator label="Finalizing your cards..." className="mt-4" />
+          )}
 
           {phase === "ready" && (
             <button
