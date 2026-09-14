@@ -3,7 +3,7 @@ import { getCollection, parseObjectId } from "@/lib/mongodb";
 import { confirmTransaction } from "@/lib/transactions";
 import { getEntropySeed, fulfillPackEntropy, getEntropyRequestData, getFulfillTxHash } from "@/lib/blockchain";
 import { buildPackRaritiesFromSeed } from "@/lib/odds";
-import { pickCardTemplate } from "@/lib/card-templates";
+import { pickCardTemplatesBulk } from "@/lib/card-templates";
 import { ethers } from "ethers";
 
 export const maxDuration = 10; // Safe for Hobby plan
@@ -69,13 +69,14 @@ async function syncFulfilledToMongo(
   }
 
   // Update card rarities and templateId (even if tokenIds weren't recovered)
-  for (let i = 0; i < rarities.length; i++) {
-    const template = await pickCardTemplate(rarities[i]);
-    await cardsCollection.updateOne(
-      { txId, pickIndex: i },
-      { $set: { rarity: rarities[i], templateId: template.templateId } }
-    );
-  }
+  const templates = await pickCardTemplatesBulk(rarities);
+  const cardBulkOps = rarities.map((rarity, i) => ({
+    updateOne: {
+      filter: { txId, pickIndex: i },
+      update: { $set: { rarity, templateId: templates[i].templateId } },
+    },
+  }));
+  await cardsCollection.bulkWrite(cardBulkOps);
 
   // Update transaction — on-chain fulfilled means we can mark confirmed
   const updateFields: Record<string, unknown> = {
@@ -219,15 +220,16 @@ export async function POST() {
           }
         );
 
-        // Update card rarities and templateId
+        // Update card rarities and templateId (bulk)
         const cardsCollection = await getCollection("cards");
-        for (let i = 0; i < rarities.length; i++) {
-          const template = await pickCardTemplate(rarities[i]);
-          await cardsCollection.updateOne(
-            { txId, pickIndex: i },
-            { $set: { rarity: rarities[i], templateId: template.templateId } }
-          );
-        }
+        const templates = await pickCardTemplatesBulk(rarities);
+        const cardBulkOps = rarities.map((rarity, i) => ({
+          updateOne: {
+            filter: { txId, pickIndex: i },
+            update: { $set: { rarity, templateId: templates[i].templateId } },
+          },
+        }));
+        await cardsCollection.bulkWrite(cardBulkOps);
 
         results.push({ txId, type: "entropy_pending", fulfilled: true, fulfillTxHash, rarities });
       } catch (err) {

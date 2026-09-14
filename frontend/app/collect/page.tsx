@@ -71,10 +71,8 @@ export default function PacksPage() {
 
           // If entropy flow, poll fulfill endpoint from client
           if (data.entropy && rawTxId) {
-            setReveal({
-              cards: data.cards, // placeholder cards
-              entropy: true,
-            });
+            // Signal entropy flow to PackReveal (no cards yet — still loading)
+            setReveal({ entropy: true });
 
             // Client-side polling loop
             const maxAttempts = 15; // 15 × 2s = 30s max

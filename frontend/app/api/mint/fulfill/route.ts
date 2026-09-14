@@ -3,7 +3,7 @@ import { getCollection, parseObjectId } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
 import { getEntropySeed, fulfillPackEntropy, waitForReceipt, getEntropyRequestData, getFulfillTxHash } from "@/lib/blockchain";
 import { buildPackRaritiesFromSeed } from "@/lib/odds";
-import { pickCardTemplate } from "@/lib/card-templates";
+import { pickCardTemplatesBulk } from "@/lib/card-templates";
 import { ethers } from "ethers";
 
 export const maxDuration = 10; // Safe for Hobby plan without Fluid Compute
@@ -97,13 +97,14 @@ async function recoverFromChain(
   }
 
   // Update card rarities and templateId (even if tokenIds weren't recovered from events)
-  for (let i = 0; i < rarities.length; i++) {
-    const template = await pickCardTemplate(rarities[i]);
-    await cardsCollection.updateOne(
-      { txId, pickIndex: i },
-      { $set: { rarity: rarities[i], templateId: template.templateId } }
-    );
-  }
+  const templates = await pickCardTemplatesBulk(rarities);
+  const cardBulkOps = rarities.map((rarity, i) => ({
+    updateOne: {
+      filter: { txId, pickIndex: i },
+      update: { $set: { rarity, templateId: templates[i].templateId } },
+    },
+  }));
+  await cardsCollection.bulkWrite(cardBulkOps);
 
   // Update transaction — only overwrite txHash if we found the fulfill hash
   const updateFields: Record<string, unknown> = {
@@ -229,11 +230,10 @@ export async function POST(request: Request) {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes("Already fulfilled")) {
-        // Race condition: another request already fulfilled this pack on-chain
         console.warn(`[fulfill] Race condition: seq ${sequenceNumber} already fulfilled, recovering...`);
         return await recoverFromChain(txId, sequenceNumber, contractAddress);
       }
-      throw err; // Re-throw non-idempotent errors
+      throw err;
     }
 
     // Update tx with fulfill hash and rarities
@@ -249,15 +249,16 @@ export async function POST(request: Request) {
       }
     );
 
-    // Update card rarities and templateId
+    // Update card rarities and templateId (bulk)
     const cardsCollection = await getCollection("cards");
-    for (let i = 0; i < rarities.length; i++) {
-      const template = await pickCardTemplate(rarities[i]);
-      await cardsCollection.updateOne(
-        { txId, pickIndex: i },
-        { $set: { rarity: rarities[i], templateId: template.templateId } }
-      );
-    }
+    const templates = await pickCardTemplatesBulk(rarities);
+    const cardBulkOps = rarities.map((rarity, i) => ({
+      updateOne: {
+        filter: { txId, pickIndex: i },
+        update: { $set: { rarity, templateId: templates[i].templateId } },
+      },
+    }));
+    await cardsCollection.bulkWrite(cardBulkOps);
 
     // Wait for on-chain confirmation (1-3 blocks on Monad)
     const receipt = await waitForReceipt(fulfillTxHash, 10, 1000);

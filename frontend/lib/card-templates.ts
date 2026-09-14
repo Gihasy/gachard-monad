@@ -62,3 +62,31 @@ export async function pickCardTemplate(rarity: number): Promise<CardTemplate> {
 
   return templates[Math.floor(Math.random() * templates.length)];
 }
+
+/**
+ * Bulk pick: pre-fetch all templates for needed rarities in 1 query,
+ * then random-pick per card from cache. Identical selection logic to pickCardTemplate.
+ */
+export async function pickCardTemplatesBulk(rarities: number[]): Promise<CardTemplate[]> {
+  const uniqueRarities = [...new Set(rarities)];
+  const collection = await getCollection("card_templates");
+  const allTemplates = (await collection
+    .find({ rarity: { $in: uniqueRarities } })
+    .toArray()) as unknown as CardTemplate[];
+
+  // Group by rarity
+  const byRarity = new Map<number, CardTemplate[]>();
+  for (const t of allTemplates) {
+    if (!byRarity.has(t.rarity)) byRarity.set(t.rarity, []);
+    byRarity.get(t.rarity)!.push(t);
+  }
+
+  // Pick one per rarity slot — same logic as pickCardTemplate
+  return rarities.map((rarity) => {
+    let pool = byRarity.get(rarity);
+    if (!pool || pool.length === 0) {
+      pool = DEFAULT_TEMPLATES.filter((t) => t.rarity === rarity);
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+  });
+}

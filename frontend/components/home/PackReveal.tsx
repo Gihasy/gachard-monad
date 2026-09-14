@@ -31,7 +31,7 @@ export interface RevealedCard {
 }
 
 export interface RevealSuccess {
-  cards: RevealedCard[];
+  cards?: RevealedCard[];
   newBalance?: number;
   entropy?: boolean;
   error?: undefined;
@@ -154,23 +154,15 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
     );
   }
 
-  const isEntropy = "cards" in result && (result as RevealSuccess).entropy === true;
+  const isEntropy = "entropy" in result && (result as RevealSuccess).entropy === true;
+  const hasCards = cards.length > 0;
 
   const handleOpen = () => {
     if (phase !== "ready") return;
 
     if (isEntropy) {
-      // Entropy mode: brief "requesting" phase while on-chain randomness resolves
+      // Entropy mode: enter requesting phase, wait for cards to arrive
       setPhase("requesting");
-      const t = setTimeout(() => {
-        setPhase("bursting");
-        const t2 = setTimeout(() => {
-          setRevealedCount(0);
-          setPhase("revealing");
-        }, 1400);
-        timers.current.push(t2);
-      }, 2000);
-      timers.current.push(t);
     } else {
       setPhase("bursting");
       const t = setTimeout(() => {
@@ -180,6 +172,23 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
       timers.current.push(t);
     }
   };
+
+  // When cards arrive during requesting phase, start bursting
+  useEffect(() => {
+    if (phase === "requesting" && hasCards) {
+      // Small delay so user sees the cards are ready
+      const t = setTimeout(() => {
+        setPhase("bursting");
+        const t2 = setTimeout(() => {
+          setRevealedCount(0);
+          setPhase("revealing");
+        }, 1400);
+        timers.current.push(t2);
+      }, 500);
+      timers.current.push(t);
+      return () => clearTimeout(t);
+    }
+  }, [phase, hasCards]);
 
   return (
     <div
