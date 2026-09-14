@@ -152,7 +152,10 @@ export async function POST() {
         continue;
       }
 
-      const contractAddress = tx.contractAddress || process.env.CONTRACT_ADDRESS?.trim()!;
+      // NOTE: Sengaja pakai env var langsung, bukan tx.contractAddress.
+      // tx.contractAddress bisa menyimpan alamat lama jika env var di-update
+      // setelah transaksi dibuat. Event matching harus selalu pakai kontrak aktif.
+      const contractAddress = process.env.CONTRACT_ADDRESS?.trim()!;
 
       try {
         // ON-CHAIN-FIRST: check if already fulfilled on-chain

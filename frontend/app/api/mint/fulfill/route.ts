@@ -184,7 +184,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Missing entropy sequence number" }, { status: 400 });
     }
 
-    const contractAddress = tx.contractAddress || process.env.CONTRACT_ADDRESS?.trim()!;
+    // NOTE: Sengaja pakai env var langsung, bukan tx.contractAddress.
+    // tx.contractAddress bisa menyimpan alamat lama jika env var di-update
+    // setelah transaksi dibuat. Event matching harus selalu pakai kontrak aktif.
+    const contractAddress = process.env.CONTRACT_ADDRESS?.trim()!;
 
     // ON-CHAIN-FIRST idempotency check:
     // If already fulfilled on-chain, sync data to MongoDB and return success.
