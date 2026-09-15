@@ -12,13 +12,13 @@ function PrivyWalletContent() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!ready) return null;
-
   const wallet = wallets[0];
   const isConnected = authenticated && !!wallet;
 
+  // Save wallet info to backend when first connected
+  // NOTE: useEffect MUST be before any early returns (Rules of Hooks)
   useEffect(() => {
-    if (!isConnected || saved || saving) return;
+    if (!ready || !isConnected || saved || saving) return;
     setSaving(true);
     fetch("/api/user/privy", {
       method: "POST",
@@ -32,7 +32,9 @@ function PrivyWalletContent() {
       .then(() => setSaved(true))
       .catch(() => {})
       .finally(() => setSaving(false));
-  }, [isConnected, saved, saving, wallet]);
+  }, [ready, isConnected, saved, saving, wallet]);
+
+  if (!ready) return null;
 
   if (!isConnected) {
     return (
