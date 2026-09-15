@@ -1,8 +1,8 @@
 # Technical Spec — Integrasi Privy: "For Advanced Users" di Profile
-## Status: SPEC (belum implementasi)
+## Status: IMPLEMENTED (deployed to production)
 
 *Dibuat: 15 September 2026*
-*Terakhir diupdate: 15 September 2026*
+*Terakhir diupdate: 16 September 2026*
 *Target: Submit review sebelum mulai kode*
 
 ---

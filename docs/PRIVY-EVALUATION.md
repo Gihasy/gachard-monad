@@ -1,5 +1,5 @@
 # Evaluasi Integrasi Privy — Gachard on Monad
-## Status: EVALUASI (belum implementasi)
+## Status: IMPLEMENTED (Opsi C — commit `7bc1567`, `f941dc5`)
 
 *Dibuat: 15 September 2026*
 *Deadline hackathon: 13 Oktober 2026 (28 hari lagi)*

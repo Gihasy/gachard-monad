@@ -33,6 +33,7 @@ Monad's high throughput (~10,000 TPS) and low latency (~1s block time) make it i
 - **AI Anomaly Detection** — Wash-trading detection on marketplace
 - **Support Gachard** — Floating CTA button for early supporters
 - **Pyth Entropy** — Provably fair pack randomness with on-chain verifiable RNG
+- **Privy Embedded Wallet** — Optional self-custody wallet for advanced users (For Advanced Users section)
 
 ## Quick Start
 
@@ -75,6 +76,7 @@ See `frontend/.env.local.example`.
 | Payment | Stripe Test Mode (credit + direct) |
 | AI | Gemini API (market insight) |
 | RNG | Pyth Entropy (on-chain verifiable) |
+| Wallet (optional) | Privy Embedded Wallet (self-custody, v1.93.0) |
 | Hosting | Vercel (frontend + backend) |
 
 ## Architecture
@@ -91,8 +93,9 @@ See `frontend/.env.local.example`.
 - **ADR-026**: Dismantle & Crystal (burn-to-earn)
 - **ADR-027**: Become a Creator (whitelist form)
 - **ADR-028**: Pyth Entropy for provably fair pack randomness
+- **ADR-029**: Privy Integration (optional self-custody wallet)
 
-See `DECISIONS.md` for all 28 ADRs.
+See `DECISIONS.md` for all 29 ADRs.
 
 ### Project Structure
 ```
@@ -150,7 +153,8 @@ forge script script/DeployPackEntropy.s.sol --rpc-url monad_testnet --broadcast
    - `RPC_URL` — Monad Testnet RPC URL
    - `CHAIN_ID` — Monad Testnet Chain ID (10143)
    - `ENCRYPTION_SECRET_KEY` — AES-256-GCM key (min 32 chars)
-   - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — Admin console credentials
+    - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — Admin console credentials
+    - `NEXT_PUBLIC_PRIVY_APP_ID` — Privy App ID for embedded wallet (optional)
 
 ### Database Scripts
 ```bash

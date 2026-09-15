@@ -23,6 +23,7 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 
 ### Advanced Features
 - **Pyth Entropy Integration** — Provably fair pack randomness using on-chain verifiable RNG, replacing Math.random() with cryptographically secure seed generation
+- **Privy Embedded Wallet** — Optional self-custody wallet for advanced users, with progressive disclosure UX (wallet address verifiable on block explorer)
 - **AI Anomaly Detection** — Wash-trading detection on marketplace transactions
 - **Dismantle & Crystal** — Burn cards to earn Crystal currency
 - **QR Verification** — Scan physical cards for authenticity verification
