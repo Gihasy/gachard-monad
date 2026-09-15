@@ -64,10 +64,17 @@ body {
     radial-gradient(ellipse 60% 70% at 50% 100%, rgba(0, 204, 255, 0.10) 0%, transparent 60%),
     var(--deep-navy);
 }
+/* Star field drifts via transform, not background-position: background-position
+   is not compositable, so the old version repainted the whole viewport every
+   frame, forever, on every page. The tile is 900px and repeats, so translating
+   by exactly one tile loops seamlessly — identical visual, no repaint. */
 .cosmic-bg::before {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: calc(100% + 900px);
   background-image:
     radial-gradient(1px 1px at 25% 30%, rgba(255,255,255,0.5), transparent),
     radial-gradient(1px 1px at 70% 20%, rgba(255,255,255,0.4), transparent),
@@ -76,8 +83,10 @@ body {
     radial-gradient(1px 1px at 15% 85%, rgba(255,255,255,0.4), transparent),
     radial-gradient(1px 1px at 55% 45%, rgba(255,255,255,0.25), transparent);
   background-size: 900px 900px;
+  background-repeat: repeat;
   opacity: 0.9;
   animation: driftStars 60s linear infinite;
+  will-change: transform;
 }
 .cosmic-bg::after {
   content: "";
@@ -88,7 +97,10 @@ body {
   mix-blend-mode: overlay;
   pointer-events: none;
 }
-@keyframes driftStars { to { background-position: 900px 0; } }
+@keyframes driftStars {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-900px, 0, 0); }
+}
 
 /* Grid overlay (subtle) */
 .grid-lines {
@@ -275,7 +287,6 @@ body {
   background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
   border: 1px solid var(--border-subtle);
   backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   border-radius: 20px;
 }
 .glass-hover { transition: transform 300ms cubic-bezier(.2,.9,.3,1), border-color 300ms ease, background 300ms ease; }
@@ -286,6 +297,63 @@ body {
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   backdrop-filter: blur(10px);
+}
+
+/* Backdrop blur for surfaces whose styles are otherwise inline. Inline styles
+   cannot be reached by a media query, so anything that should drop its blur on
+   mobile has to carry this class instead. */
+.blur-surface {
+  backdrop-filter: blur(18px);
+}
+
+/* Navbar surface. Lives in CSS rather than inline style so the mobile media
+   query below can drop its backdrop-filter — the navbar is sticky, so on
+   mobile that blur was being recomputed on every scroll frame. */
+.nav-glass {
+  backdrop-filter: blur(16px);
+  background: rgba(11, 14, 26, 0.35);
+  border-bottom: 1px solid transparent;
+  transition: background 220ms ease, border-color 220ms ease;
+}
+.nav-glass[data-scrolled="true"] {
+  background: rgba(11, 14, 26, 0.72);
+  border-bottom-color: rgba(230, 232, 240, 0.08);
+}
+
+/* ─── MOBILE COMPOSITING BUDGET ─────────────────────────
+   Phones pay for these two effects far more than desktops do, and both are
+   near-invisible at phone size:
+
+   1. backdrop-filter forces the compositor to re-read and blur everything
+      behind each glass surface. Cost scales with blur radius AND with the
+      number of surfaces — pages here stack 5-10 of them. Swapped for an
+      opaque-enough background, which needs no backdrop pass at all.
+   2. mix-blend-mode on the full-viewport noise layer forces a screen-sized
+      blend buffer that every glass surface above it must then read back.
+
+   Desktop keeps both effects unchanged. */
+@media (max-width: 768px) {
+  .glass {
+    background: rgba(18, 21, 38, 0.82);
+    backdrop-filter: none;
+  }
+  .card-surface {
+    background: rgba(11, 14, 26, 0.92);
+    backdrop-filter: none;
+  }
+  .cosmic-bg::after { display: none; }
+  /* No blur behind the navbar, so lean on opacity instead to keep text legible
+     over whatever scrolls under it. */
+  .nav-glass {
+    backdrop-filter: none;
+    background: rgba(11, 14, 26, 0.55);
+  }
+  .nav-glass[data-scrolled="true"] {
+    background: rgba(11, 14, 26, 0.94);
+  }
+  .blur-surface {
+    backdrop-filter: none;
+  }
 }
 
 /* Chips */
@@ -359,6 +427,7 @@ body {
     transform: none !important;
   }
   .floaty, .pulse-glow, .marquee-track { animation: none !important; }
+  .cosmic-bg::before { animation: none !important; }
 }
 
 @keyframes pulseGlow { 0%,100% { opacity: 0.55; } 50% { opacity: 0.9; } }

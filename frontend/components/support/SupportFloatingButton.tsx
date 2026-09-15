@@ -15,7 +15,7 @@ const SupportFloatingButton = forwardRef<
       ref={ref}
       onClick={onClick}
       aria-label="Support Gachard"
-      className="group"
+      className="group blur-surface"
       style={{
         position: "fixed",
         right: "clamp(16px, 2vw, 24px)",
@@ -31,8 +31,6 @@ const SupportFloatingButton = forwardRef<
         border: "1px solid rgba(184, 172, 255, 0.25)",
         background:
           "linear-gradient(135deg, rgba(138, 92, 255, 0.2), rgba(255, 107, 186, 0.15), rgba(0, 204, 255, 0.1))",
-        backdropFilter: "blur(18px)",
-        WebkitBackdropFilter: "blur(18px)",
         boxShadow:
           "0 4px 24px rgba(138, 92, 255, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05) inset",
         cursor: "pointer",

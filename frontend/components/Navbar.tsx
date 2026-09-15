@@ -79,19 +79,9 @@ export default function Navbar() {
 
   return (
     <header
-      className="sticky top-0 z-50 w-full"
+      className="sticky top-0 z-50 w-full nav-glass"
       data-testid="site-navbar"
-      style={{
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        background: scrolled
-          ? "rgba(11, 14, 26, 0.72)"
-          : "rgba(11, 14, 26, 0.35)",
-        borderBottom: scrolled
-          ? "1px solid rgba(230,232,240,0.08)"
-          : "1px solid transparent",
-        transition: "background 220ms ease, border-color 220ms ease",
-      }}
+      data-scrolled={scrolled ? "true" : "false"}
     >
       <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
         <div className="flex items-center justify-between h-[76px]">
@@ -239,7 +229,6 @@ export default function Navbar() {
                     style={{
                       background: "rgba(15, 19, 36, 0.97)",
                       border: "1px solid rgba(230,232,240,0.1)",
-                      backdropFilter: "blur(20px)",
                       boxShadow: "0 16px 48px rgba(0,0,0,0.5)",
                     }}
                   >
@@ -356,11 +345,10 @@ export default function Navbar() {
         data-testid="nav-mobile-menu"
       >
         <div
-          className="mx-5 mb-4 rounded-2xl p-4"
+          className="mx-5 mb-4 rounded-2xl p-4 blur-surface"
           style={{
             background: "rgba(15, 19, 36, 0.85)",
             border: "1px solid rgba(230,232,240,0.08)",
-            backdropFilter: "blur(20px)",
           }}
         >
           <div className="flex flex-col">
