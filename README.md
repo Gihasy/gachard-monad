@@ -317,6 +317,41 @@ Pack rarity is determined by **Pyth Entropy**, an on-chain verifiable RNG protoc
 3. **Structural Check** — On-chain validation ensures minimum Rare+ card count
 4. **Transparency** — Public verification endpoint at `/api/verify/pack/[txHash]`
 
+### Verifying a Pack Yourself
+
+Nothing here has to be taken on trust. The seed and the commitment are both
+public on-chain, so anyone can re-derive a pack's result and check it:
+
+```bash
+cd frontend && npx tsx scripts/verify-entropy-onchain.ts
+```
+
+It reads `getSeed(seq)` from the chain, recomputes the rarities with the
+deterministic shuffle, recomputes `keccak256(seed, rarities)`, and compares that
+against the `getRarityHash(seq)` stored on-chain — then cross-checks each minted
+token's `cardRarity()` and the Rare+ guarantee. Run against 9 live transactions:
+9 passed, 0 failed.
+
+The one thing the commitment does *not* prove is that the shuffle algorithm
+itself is unbiased — it proves the rarities were derived consistently from that
+seed. Closing that gap means moving the shuffle on-chain, at roughly 150k-200k
+extra gas per pack. That trade-off is recorded in ADR-029.
+
+### Recovering an Interrupted Pack
+
+Pack opening spans three transactions (request → Pyth callback → fulfill), so it
+can be interrupted between them. Recovery is on-chain-first: before doing
+anything, the endpoint asks the contract whether the sequence is already
+fulfilled, and if so reconstructs state from the chain rather than re-minting.
+
+Finding the `PackFulfilled` event for that reconstruction is anchored to
+`entropyRequestBlock` — the block the request landed in, captured from its
+receipt. Fulfillment can only occur at or after it, so the log scan runs forward
+from a known point and normally resolves in a single query. Scanning backwards
+from the chain head instead would be bounded by Monad's 100-block `eth_getLogs`
+cap and the 10s route budget to roughly ten minutes of history, which is shorter
+than the hour a client keeps a timed-out pack recoverable.
+
 ### Cost per Pack Opening
 | Pack Type | Gas (Admin) | Entropy Fee (PackEntropy) | Total |
 |-----------|-------------|---------------------------|-------|
