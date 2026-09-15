@@ -1,0 +1,139 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
+import { monadTestnet } from "@/lib/monad-testnet";
+
+function PrivyWalletContent() {
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { wallets } = useWallets();
+  const [expanded, setExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!ready) return null;
+
+  const wallet = wallets[0];
+  const isConnected = authenticated && !!wallet;
+
+  useEffect(() => {
+    if (!isConnected || saved || saving) return;
+    setSaving(true);
+    fetch("/api/user/privy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        privyUserId: wallet?.address ? "connected" : null,
+        privyWalletAddress: wallet?.address,
+      }),
+    })
+      .then(() => setSaved(true))
+      .catch(() => {})
+      .finally(() => setSaving(false));
+  }, [isConnected, saved, saving, wallet]);
+
+  if (!isConnected) {
+    return (
+      <div className="glass p-6 mt-8">
+        <h3 className="text-lg font-display text-white/90 mb-2">For Advanced Users</h3>
+        <p className="text-sm text-white/50 mb-4">
+          Want full control over your cards&apos; underlying technology? Set up advanced access
+          to manage your data independently.
+        </p>
+        <button
+          onClick={() => {
+            setError(null);
+            try { login(); } catch { setError("Something went wrong. Please try again."); }
+          }}
+          className="btn-ghost text-sm"
+          data-testid="privy-setup-btn"
+        >
+          Set Up Advanced Access
+        </button>
+        {error && (
+          <p className="mt-3 text-sm" style={{ color: "var(--aurora-pink)" }}>
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass p-6 mt-8">
+      <h3 className="text-lg font-display text-white/90 mb-2">For Advanced Users</h3>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-green-400">✓</span>
+        <span className="text-sm text-white/70">Advanced Access Enabled</span>
+      </div>
+
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-sm text-white/50 hover:text-white/70 transition-colors"
+        data-testid="privy-toggle-details"
+      >
+        {expanded ? "Hide Technical Details ▴" : "Show Technical Details ▾"}
+      </button>
+
+      {expanded && (
+        <div className="mt-4 pt-4 border-t border-white/10 space-y-4">
+          <div>
+            <p className="text-xs text-white/40 mb-1">Address</p>
+            <p className="text-sm text-white/70 font-mono break-all">{wallet.address}</p>
+          </div>
+
+          <div>
+            <p className="text-xs text-white/40 mb-1">Network</p>
+            <p className="text-sm text-white/70">Monad Testnet</p>
+          </div>
+
+          <a
+            href={`https://testnet.monadvision.com/address/${wallet.address}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-ghost text-sm inline-block"
+            data-testid="privy-explorer-link"
+          >
+            View on Block Explorer
+          </a>
+
+          <div className="pt-2">
+            <button
+              onClick={() => {
+                setExpanded(false);
+                try { logout(); } catch { /* ignore */ }
+              }}
+              className="text-xs text-white/30 hover:text-white/50 transition-colors"
+              data-testid="privy-disconnect-btn"
+            >
+              Disconnect Advanced Access
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function PrivyWalletSection() {
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  if (!appId) return null;
+
+  return (
+    <PrivyProvider
+      appId={appId}
+      config={{
+        defaultChain: monadTestnet,
+        supportedChains: [monadTestnet],
+        loginMethods: ["google", "email"],
+        embeddedWallets: {
+          createOnLogin: "users-without-wallets",
+        },
+      }}
+    >
+      <PrivyWalletContent />
+    </PrivyProvider>
+  );
+}

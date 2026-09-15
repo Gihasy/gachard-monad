@@ -1,10 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import PageShell from "@/components/PageShell";
 import CardItem from "@/components/CardItem";
+
+const PrivySection = dynamic(() => import("@/components/profile/PrivyWalletSection"), { ssr: false });
 
 type SessionUser = { user_id: string; username: string; email?: string };
 type Card = {
@@ -639,6 +642,9 @@ export default function Profil() {
           </div>
         </div>
       )}
+
+      {/* Advanced Users — Privy self-custody wallet (supplementary, at bottom) */}
+      <PrivySection />
     </PageShell>
   );
 }
