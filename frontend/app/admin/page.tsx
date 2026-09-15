@@ -74,7 +74,7 @@ type PrintRequest = {
 const RARITY_LABELS = ["Common", "Rare", "Epic", "Legendary"];
 const EXPLORER_TX = "https://testnet.monadvision.com/tx/";
 const EXPLORER_TOKEN = "https://testnet.monadvision.com/nft/";
-const CONTRACT_ADDR = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x712b70CbD3854A11f18839068483114D0068b4FC").trim();
+const CONTRACT_ADDR = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x2a05a2e3b0e7355b97de593e354063e9474c9d08").trim();
 
 type PendingCard = {
   cardId: string | null;
@@ -632,7 +632,7 @@ function StatusPill({ status, rgb }: { status: string; rgb: string }) {
 
 function TokenIdCell({ tokenId }: { tokenId: number }) {
   const [copied, setCopied] = useState(false);
-  const fullUrl = `https://testnet.monadvision.com/nft/${CONTRACT_ADDR}/${tokenId}`;
+  const fullUrl = `${EXPLORER_TOKEN}${CONTRACT_ADDR}/${tokenId}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(fullUrl);
