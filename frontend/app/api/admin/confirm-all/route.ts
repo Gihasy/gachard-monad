@@ -18,6 +18,7 @@ async function syncFulfilledToMongo(
   txId: string,
   sequenceNumber: number,
   contractAddress: string,
+  requestBlock?: number | null,
 ) {
   const txCollection = await getCollection("transactions");
   const cardsCollection = await getCollection("cards");
@@ -33,7 +34,7 @@ async function syncFulfilledToMongo(
   // Try to find fulfill txHash from PackFulfilled event
   let fulfillTxHash: string | null = null;
   try {
-    fulfillTxHash = await getFulfillTxHash(sequenceNumber);
+    fulfillTxHash = await getFulfillTxHash(sequenceNumber, requestBlock);
   } catch (e) {
     console.warn(`[confirm-all] recover: failed to get fulfill txHash for seq ${sequenceNumber}:`, e);
   }
@@ -146,6 +147,7 @@ export async function POST() {
     for (const tx of batch) {
       const txId = tx._id.toString();
       const sequenceNumber = tx.entropySequenceNumber;
+      const requestBlock = tx.entropyRequestBlock as number | null | undefined;
 
       if (!sequenceNumber && sequenceNumber !== 0) {
         results.push({ txId, type: "entropy_pending", skipped: true, skipReason: "missing_sequence" });
@@ -162,7 +164,7 @@ export async function POST() {
         const requestData = await getEntropyRequestData(sequenceNumber);
         if (requestData.fulfilled) {
           console.log(`[confirm-all] Sequence ${sequenceNumber} already fulfilled on-chain, syncing...`);
-          const syncResult = await syncFulfilledToMongo(txId, sequenceNumber, contractAddress);
+          const syncResult = await syncFulfilledToMongo(txId, sequenceNumber, contractAddress, requestBlock);
           results.push({
             txId,
             type: "entropy_pending",
@@ -195,7 +197,7 @@ export async function POST() {
           if (errMsg.includes("Already fulfilled")) {
             // Race condition: another request fulfilled it between our check and this call
             console.warn(`[confirm-all] Race condition: seq ${sequenceNumber} already fulfilled, syncing...`);
-            const syncResult = await syncFulfilledToMongo(txId, sequenceNumber, contractAddress);
+            const syncResult = await syncFulfilledToMongo(txId, sequenceNumber, contractAddress, requestBlock);
             results.push({
               txId,
               type: "entropy_pending",

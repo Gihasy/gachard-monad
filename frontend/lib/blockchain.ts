@@ -280,7 +280,7 @@ export async function requestPackEntropy(
   userAddr: string,
   packSize: number,
   guaranteed: number
-): Promise<{ sequenceNumber: number; txHash: string }> {
+): Promise<{ sequenceNumber: number; txHash: string; requestBlock: number }> {
   const normalizedAddress = ethers.getAddress(userAddr);
   const provider = getProvider();
   const wallet = getAdminWallet().connect(provider);
@@ -295,7 +295,10 @@ export async function requestPackEntropy(
   for (const log of receipt.logs) {
     if (log.topics[0] === PACK_REQUESTED_TOPIC) {
       const sequenceNumber = parseInt(log.topics[1], 16);
-      return { sequenceNumber, txHash: tx.hash };
+      // requestBlock anchors the later PackFulfilled lookup. Fulfillment always
+      // happens at or after this block, so recovery can search forward from a
+      // known point instead of scanning backwards from the chain head.
+      return { sequenceNumber, txHash: tx.hash, requestBlock: receipt.blockNumber };
     }
   }
   throw new Error("PackRequested event not found in receipt");
@@ -354,29 +357,87 @@ export async function getEntropyRequestData(sequenceNumber: number): Promise<{
   }, `requests(${sequenceNumber})`);
 }
 
-export async function getFulfillTxHash(sequenceNumber: number): Promise<string | null> {
+/**
+ * Find the PackFulfilled tx hash for a sequence number.
+ *
+ * `requestBlock` (stored on the transaction when the pack was requested) is the
+ * block the entropy request landed in. Fulfillment can only happen at or after
+ * it, so passing it lets us scan a short forward window from a known anchor.
+ *
+ * Without the anchor we have to scan backwards from the chain head, and that is
+ * bounded by how long the serverless function may run: Monad caps eth_getLogs at
+ * 100 blocks, blocks are ~0.3s, and these routes run under `maxDuration = 10`.
+ * That budget only buys ~2,000 blocks — roughly ten minutes of history — while
+ * the client keeps a pending transaction recoverable for an hour. A pack
+ * recovered after more than ten minutes therefore could not be matched to its
+ * mint, and its cards were left with `tokenId: null`.
+ */
+export async function getFulfillTxHash(
+  sequenceNumber: number,
+  requestBlock?: number | null
+): Promise<string | null> {
   return withRetry(async () => {
     const contract = getPackEntropyContract();
     const provider = getProvider();
     const currentBlock = await provider.getBlockNumber();
     const filter = contract.filters.PackFulfilled(sequenceNumber);
 
-    // Monad testnet limits eth_getLogs to 100 block range
-    // Search backwards in 100-block chunks, up to ~2000 blocks
+    // Monad limits eth_getLogs to a 100-block range.
     const chunkSize = 100;
-    const maxBlocks = 2000;
-    for (let offset = 0; offset < maxBlocks; offset += chunkSize) {
-      const fromBlock = Math.max(0, currentBlock - offset - chunkSize + 1);
-      const toBlock = currentBlock - offset;
+    // Each chunk is one sequential RPC round trip, and a thrown error here is
+    // retried by withRetry (3 attempts). The anchored path almost always exits
+    // on the first chunk, so it can afford a wide ceiling; the unanchored
+    // fallback has to scan every chunk before giving up, so it is kept small
+    // enough that 3 attempts still fit the route's 10s budget.
+    const maxChunksAnchored = 25;
+    const maxChunksFallback = 8;
+    let rpcFailures = 0;
+
+    const scan = async (from: number, to: number): Promise<string | null> => {
+      if (to < from) return null;
       try {
-        const events = await contract.queryFilter(filter, fromBlock, toBlock);
-        if (events.length > 0 && 'transactionHash' in events[0]) {
+        const events = await contract.queryFilter(filter, from, to);
+        if (events.length > 0 && "transactionHash" in events[0]) {
           return events[0].transactionHash;
         }
       } catch {
-        // RPC error on this chunk — skip and try next
+        // Distinguishing "no event here" from "RPC failed" matters: a silent
+        // failure used to look identical to a confirmed absence.
+        rpcFailures++;
       }
-      if (fromBlock === 0) break;
+      return null;
+    };
+
+    if (requestBlock && requestBlock > 0) {
+      // Anchored: walk forward from the request block. Fulfillment normally
+      // lands within a handful of blocks, so this usually hits on the first
+      // chunk regardless of how old the transaction is.
+      const start = Math.max(0, requestBlock - 1);
+      for (let i = 0; i < maxChunksAnchored; i++) {
+        const from = start + i * chunkSize;
+        if (from > currentBlock) break;
+        const to = Math.min(from + chunkSize - 1, currentBlock);
+        const hit = await scan(from, to);
+        if (hit) return hit;
+      }
+    } else {
+      // Legacy transactions predate requestBlock — fall back to the backwards
+      // scan, which only reaches about ten minutes into the past.
+      for (let i = 0; i < maxChunksFallback; i++) {
+        const to = currentBlock - i * chunkSize;
+        if (to < 0) break;
+        const from = Math.max(0, to - chunkSize + 1);
+        const hit = await scan(from, to);
+        if (hit) return hit;
+        if (from === 0) break;
+      }
+    }
+
+    if (rpcFailures > 0) {
+      // Surface the ambiguity rather than reporting a clean "not found".
+      throw new Error(
+        `PackFulfilled(${sequenceNumber}) not found, but ${rpcFailures} log query/queries failed — result is inconclusive`
+      );
     }
     return null;
   }, `PackFulfilled(${sequenceNumber}) event`);

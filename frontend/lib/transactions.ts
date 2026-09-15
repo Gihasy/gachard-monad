@@ -25,6 +25,8 @@ export interface Transaction {
   contractAddress?: string;
   error?: string;
   entropySequenceNumber?: number;
+  /** Block the entropy request landed in — anchors PackFulfilled event lookup. */
+  entropyRequestBlock?: number | null;
   entropySeed?: string | null;
   rarityHash?: string | null;
   createdAt: string;

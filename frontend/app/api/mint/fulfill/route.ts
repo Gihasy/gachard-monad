@@ -46,6 +46,7 @@ async function recoverFromChain(
   txId: string,
   sequenceNumber: number,
   contractAddress: string,
+  requestBlock?: number | null,
 ) {
   const txCollection = await getCollection("transactions");
   const cardsCollection = await getCollection("cards");
@@ -62,7 +63,7 @@ async function recoverFromChain(
   // Find fulfill txHash from PackFulfilled event
   let fulfillTxHash: string | null = null;
   try {
-    fulfillTxHash = await getFulfillTxHash(sequenceNumber);
+    fulfillTxHash = await getFulfillTxHash(sequenceNumber, requestBlock);
   } catch (e) {
     console.warn(`[fulfill] recover: failed to get fulfill txHash for seq ${sequenceNumber}:`, e);
   }
@@ -180,6 +181,7 @@ export async function POST(request: Request) {
     }
 
     const sequenceNumber = tx.entropySequenceNumber;
+    const requestBlock = tx.entropyRequestBlock as number | null | undefined;
     if (!sequenceNumber && sequenceNumber !== 0) {
       return NextResponse.json({ success: false, error: "Missing entropy sequence number" }, { status: 400 });
     }
@@ -195,7 +197,7 @@ export async function POST(request: Request) {
     const requestData = await getEntropyRequestData(sequenceNumber);
     if (requestData.fulfilled) {
       console.log(`[fulfill] Sequence ${sequenceNumber} already fulfilled on-chain, recovering data...`);
-      return await recoverFromChain(txId, sequenceNumber, contractAddress);
+      return await recoverFromChain(txId, sequenceNumber, contractAddress, requestBlock);
     }
 
     // ONE-SHOT check: is seed available on-chain? (NO polling loop)
@@ -234,7 +236,7 @@ export async function POST(request: Request) {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes("Already fulfilled")) {
         console.warn(`[fulfill] Race condition: seq ${sequenceNumber} already fulfilled, recovering...`);
-        return await recoverFromChain(txId, sequenceNumber, contractAddress);
+        return await recoverFromChain(txId, sequenceNumber, contractAddress, requestBlock);
       }
       throw err;
     }

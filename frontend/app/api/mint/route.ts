@@ -136,7 +136,7 @@ export async function POST(request: Request) {
       console.log("[mint] Using Pyth Entropy flow");
 
       // Step 1: Request entropy
-      const { sequenceNumber, txHash: requestTxHash } = await requestPackEntropy(
+      const { sequenceNumber, txHash: requestTxHash, requestBlock } = await requestPackEntropy(
         Date.now(), // packId
         walletAddress,
         pack.cards,
@@ -161,6 +161,7 @@ export async function POST(request: Request) {
         status: "entropy_pending",
         contractAddress,
         entropySequenceNumber: sequenceNumber,
+        entropyRequestBlock: requestBlock,
         entropySeed: null,
         rarityHash: null,
         fromAddress: process.env.ADMIN_WALLET_ADDRESS?.trim(),
