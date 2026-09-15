@@ -7,8 +7,7 @@ import Link from "next/link";
 import PageShell from "@/components/PageShell";
 import CardItem from "@/components/CardItem";
 
-// TODO: Re-enable after verifying PrivySection doesn't crash
-// const PrivySection = dynamic(() => import("@/components/profile/PrivyWalletSection"), { ssr: false });
+const PrivySection = dynamic(() => import("@/components/profile/PrivyWalletSection"), { ssr: false });
 
 type SessionUser = { user_id: string; username: string; email?: string };
 type Card = {
@@ -645,8 +644,7 @@ export default function Profil() {
       )}
 
       {/* Advanced Users — Privy self-custody wallet (supplementary, at bottom) */}
-      {/* TODO: Re-enable after verifying PrivySection doesn't crash */}
-      {/* <PrivySection /> */}
+      <PrivySection />
     </PageShell>
   );
 }
