@@ -12,6 +12,16 @@ interface SessionUser {
   username: string;
 }
 
+const PENDING_TX_KEY = "gachard_pending_tx";
+
+interface PendingTx {
+  txId: string;
+  packType: "standard" | "booster";
+  timestamp: number;
+  userId: string;
+  lastPolledAt?: number;
+}
+
 export default function PacksPage() {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -20,6 +30,7 @@ export default function PacksPage() {
   const [reveal, setReveal] = useState<RevealResult | null>(null);
   const [loadingType, setLoadingType] = useState<"standard" | "booster" | null>(null);
   const [lastPack, setLastPack] = useState<"standard" | "booster">("standard");
+  const [pendingTxId, setPendingTxId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -40,6 +51,100 @@ export default function PacksPage() {
       .then((r) => r.json())
       .then((d) => setBalance(d.balance ?? 0))
       .catch(() => setBalance(0));
+  }, [ready, user]);
+
+  // Auto-recover pending transaction from localStorage (timeout recovery)
+  useEffect(() => {
+    if (!ready || !user) return;
+    let cancelled = false;
+
+    const recover = async () => {
+      let raw: string | null = null;
+      try { raw = localStorage.getItem(PENDING_TX_KEY); } catch { return; }
+      if (!raw) return;
+
+      let pending: PendingTx;
+      try { pending = JSON.parse(raw); } catch { localStorage.removeItem(PENDING_TX_KEY); return; }
+
+      // Expire after 1 hour
+      if (Date.now() - pending.timestamp > 3600000) {
+        localStorage.removeItem(PENDING_TX_KEY);
+        return;
+      }
+
+      // Guard 1: only recover if same user
+      if (pending.userId && pending.userId !== user.user_id) {
+        localStorage.removeItem(PENDING_TX_KEY);
+        return;
+      }
+
+      // Guard 2: skip if polled less than 5 seconds ago
+      if (pending.lastPolledAt && Date.now() - pending.lastPolledAt < 5000) {
+        return;
+      }
+
+      // Update lastPolledAt before polling
+      try {
+        localStorage.setItem(PENDING_TX_KEY, JSON.stringify({ ...pending, lastPolledAt: Date.now() }));
+      } catch { /* ignore */ }
+
+      setLastPack(pending.packType);
+      setPendingTxId(pending.txId);
+      setReveal({ entropy: true });
+      setLoadingType(pending.packType);
+
+      try {
+        const res = await fetch("/api/mint/fulfill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ txId: pending.txId }),
+        });
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.success || data.alreadyFulfilled) {
+          setPendingTxId(null);
+          localStorage.removeItem(PENDING_TX_KEY);
+          setReveal({
+            cards: data.cards.map((c: { rarity: number; tokenId?: number; template?: { templateId?: string; name?: string; artworkUrl?: string } }) => ({
+              rarity: c.rarity,
+              tokenId: c.tokenId,
+              template: c.template ? {
+                id: c.template.templateId,
+                name: c.template.name,
+                artworkUrl: c.template.artworkUrl,
+              } : undefined,
+            })),
+          });
+          window.dispatchEvent(new Event("cards-updated"));
+          fetch("/api/credits", { credentials: "include" })
+            .then((r) => r.json())
+            .then((d) => setBalance(d.balance ?? 0))
+            .catch(() => {});
+        } else if (data.retry) {
+          // Still pending — leave in localStorage, clear UI
+          setReveal(null);
+          setLoadingType(null);
+        } else {
+          // Real error — clear
+          localStorage.removeItem(PENDING_TX_KEY);
+          setPendingTxId(null);
+          setReveal(null);
+          setLoadingType(null);
+        }
+      } catch {
+        if (!cancelled) {
+          // Network error — leave in localStorage for next visit
+          setReveal(null);
+          setLoadingType(null);
+        }
+      }
+    };
+
+    recover();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, user]);
 
   const handleBuy = useCallback(
@@ -71,6 +176,8 @@ export default function PacksPage() {
 
           // If entropy flow, poll fulfill endpoint from client
           if (data.entropy && rawTxId) {
+            // Track pending txId for timeout recovery
+            setPendingTxId(rawTxId);
             // Signal entropy flow to PackReveal (no cards yet — still loading)
             setReveal({ entropy: true });
 
@@ -93,6 +200,8 @@ export default function PacksPage() {
 
                 if (fulfillData.success) {
                   fulfilled = true;
+                  setPendingTxId(null);
+                  try { localStorage.removeItem(PENDING_TX_KEY); } catch { /* ignore */ }
                   setReveal({
                     cards: fulfillData.cards.map((c: { rarity: number; cardId?: string; tokenId?: number; template?: { templateId?: string; name?: string; artworkUrl?: string } }) => ({
                       rarity: c.rarity,
@@ -110,8 +219,12 @@ export default function PacksPage() {
                   // Seed not ready yet — wait and retry
                   await new Promise(r => setTimeout(r, pollInterval));
                 } else {
-                  // Real error — don't retry
-                  setReveal({ error: fulfillData.error || "Failed to finalize your cards" });
+                  // Real error — don't retry this session
+                  setReveal({
+                    error: "Something went wrong finalizing your cards. Please try again.",
+                    refunded: false,
+                    code: "transient",
+                  });
                   break;
                 }
               } catch {
@@ -121,8 +234,22 @@ export default function PacksPage() {
             }
 
             // Timeout after max attempts
-            if (!fulfilled && !("error" in ({} as { error?: string }))) {
-              setReveal({ error: "Taking longer than expected. Please try again." });
+            if (!fulfilled) {
+              // Save to localStorage so we can auto-recover on next visit
+              try {
+                localStorage.setItem(PENDING_TX_KEY, JSON.stringify({
+                  txId: rawTxId,
+                  packType,
+                  timestamp: Date.now(),
+                  userId: user?.user_id,
+                }));
+              } catch { /* localStorage quota — ignore */ }
+
+              setReveal({
+                error: "Taking longer than expected. Please try again.",
+                refunded: false,
+                code: "transient",
+              });
             }
           } else {
             // Legacy flow - show immediately
@@ -158,10 +285,21 @@ export default function PacksPage() {
             }
           }
         } else {
-          setReveal({ error: data.error || "Failed to open pack" });
+          // Refresh balance after error (refund may have occurred)
+          fetch("/api/credits", { credentials: "include" })
+            .then((r) => r.json())
+            .then((d) => setBalance(d.balance ?? 0))
+            .catch(() => {});
+          window.dispatchEvent(new Event("balance-change"));
+
+          setReveal({
+            error: "Something went wrong. Please try again.",
+            refunded: data.refunded !== false,
+            code: data.code,
+          });
         }
       } catch {
-        setReveal({ error: "Network error. Please try again." });
+        setReveal({ error: "Something went wrong. Please try again.", refunded: true, code: "transient" });
       } finally {
         setLoadingType(null);
       }
@@ -245,6 +383,113 @@ export default function PacksPage() {
           result={reveal}
           packLabel={lastPack === "booster" ? "Booster Pack" : "Standard Pack"}
           packType={lastPack}
+          onRetry={async () => {
+            // For timeout cases: re-check the pending transaction before allowing new one
+            if (pendingTxId) {
+              const txId = pendingTxId;
+              setReveal({ entropy: true }); // show loading state
+              setLoadingType(lastPack);
+
+              try {
+                const res = await fetch("/api/mint/fulfill", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ txId }),
+                });
+                const data = await res.json();
+
+                if (data.success || data.alreadyFulfilled) {
+                  // Transaction completed in background — show cards
+                  setPendingTxId(null);
+                  try { localStorage.removeItem(PENDING_TX_KEY); } catch { /* ignore */ }
+                  setReveal({
+                    cards: data.cards.map((c: { rarity: number; cardId?: string; tokenId?: number; template?: { templateId?: string; name?: string; artworkUrl?: string } }) => ({
+                      rarity: c.rarity,
+                      tokenId: c.tokenId,
+                      template: c.template ? {
+                        id: c.template.templateId,
+                        name: c.template.name,
+                        artworkUrl: c.template.artworkUrl,
+                      } : undefined,
+                    })),
+                  });
+                  window.dispatchEvent(new Event("cards-updated"));
+                  fetch("/api/credits", { credentials: "include" })
+                    .then((r) => r.json())
+                    .then((d) => setBalance(d.balance ?? 0))
+                    .catch(() => {});
+                } else if (data.retry) {
+                  // Still processing — continue polling
+                  let fulfilled = false;
+                  for (let i = 0; i < 10; i++) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    const pollRes = await fetch("/api/mint/fulfill", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "include",
+                      body: JSON.stringify({ txId }),
+                    });
+                    const pollData = await pollRes.json();
+                    if (pollData.success || pollData.alreadyFulfilled) {
+                      fulfilled = true;
+                      setPendingTxId(null);
+                      try { localStorage.removeItem(PENDING_TX_KEY); } catch { /* ignore */ }
+                      setReveal({
+                        cards: pollData.cards.map((c: { rarity: number; cardId?: string; tokenId?: number; template?: { templateId?: string; name?: string; artworkUrl?: string } }) => ({
+                          rarity: c.rarity,
+                          tokenId: c.tokenId,
+                          template: c.template ? {
+                            id: c.template.templateId,
+                            name: c.template.name,
+                            artworkUrl: c.template.artworkUrl,
+                          } : undefined,
+                        })),
+                      });
+                      window.dispatchEvent(new Event("cards-updated"));
+                      fetch("/api/credits", { credentials: "include" })
+                        .then((r) => r.json())
+                        .then((d) => setBalance(d.balance ?? 0))
+                        .catch(() => {});
+                      break;
+                    }
+                    if (!pollData.retry) break; // real error, stop polling
+                  }
+                  if (!fulfilled) {
+                    // Still not done — leave in localStorage for auto-recovery on next visit
+                    setPendingTxId(null);
+                    setReveal({
+                      error: "Still processing — we'll check again when you return.",
+                      refunded: false,
+                      code: "transient",
+                    });
+                  }
+                } else {
+                  // Real error — clear pending, let user start fresh
+                  setPendingTxId(null);
+                  try { localStorage.removeItem(PENDING_TX_KEY); } catch { /* ignore */ }
+                  setReveal({
+                    error: "Something went wrong. Please try again.",
+                    refunded: false,
+                    code: "transient",
+                  });
+                }
+              } catch {
+                // Network error on retry — restore error state
+                setReveal({
+                  error: "Something went wrong. Please try again.",
+                  refunded: false,
+                  code: "transient",
+                });
+              } finally {
+                setLoadingType(null);
+              }
+            } else {
+              // No pending tx (transient error or insufficient credits) — reset for new purchase
+              setReveal(null);
+              setLoadingType(null);
+            }
+          }}
         />
       )}
     </PageShell>

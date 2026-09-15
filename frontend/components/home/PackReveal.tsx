@@ -40,6 +40,8 @@ export interface RevealSuccess {
 export interface RevealError {
   cards?: undefined;
   error: string;
+  refunded?: boolean;
+  code?: "transient" | "insufficient_credits";
 }
 
 export type RevealResult = RevealSuccess | RevealError;
@@ -48,6 +50,7 @@ interface PackRevealProps {
   result: RevealResult;
   packLabel?: string;
   packType?: "standard" | "booster";
+  onRetry?: () => void;
 }
 
 type RevealPhase = "ready" | "requesting" | "bursting" | "revealing" | "done";
@@ -92,7 +95,7 @@ function SparkBurst() {
   );
 }
 
-export default function PackReveal({ result, packLabel = "Your Pack", packType = "booster" }: PackRevealProps) {
+export default function PackReveal({ result, packLabel = "Your Pack", packType = "booster", onRetry }: PackRevealProps) {
   const [phase, setPhase] = useState<RevealPhase>("ready");
   const [revealedCount, setRevealedCount] = useState(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -124,7 +127,18 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
   }, [phase, revealedCount, sortedCards.length]);
 
   if ("error" in result && result.error) {
-    const isInsufficient = result.error.toLowerCase().includes("insufficient");
+    const isInsufficient = result.code === "insufficient_credits";
+    const isTransient = result.code === "transient" || !result.code;
+    const refunded = result.refunded !== false;
+
+    const handleRetry = () => {
+      if (onRetry) {
+        onRetry();
+      } else {
+        window.location.reload();
+      }
+    };
+
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-5"
@@ -138,16 +152,29 @@ export default function PackReveal({ result, packLabel = "Your Pack", packType =
             border: "1px solid rgba(255,107,186,0.3)",
           }}
         >
-          <p className="mb-4">{result.error}</p>
+          <p className="mb-2 text-base font-display">
+            {isInsufficient
+              ? "Not enough credits"
+              : "Something went wrong"}
+          </p>
+          <p className="mb-4 text-sm text-white/60">
+            {isInsufficient
+              ? "Top up your balance to open packs."
+              : refunded
+                ? "Your credits have been refunded. Please try again."
+                : "Please try again. If this keeps happening, contact support."}
+          </p>
           <div className="flex items-center justify-center gap-3">
             {isInsufficient && (
               <Link href="/topup" className="btn-primary text-sm" data-testid="pack-reveal-topup-btn">
                 Top Up
               </Link>
             )}
-            <button onClick={() => window.location.reload()} className="btn-ghost text-sm">
-              Try Again
-            </button>
+            {isTransient && (
+              <button onClick={handleRetry} className="btn-ghost text-sm" data-testid="pack-reveal-retry-btn">
+                Try Again
+              </button>
+            )}
           </div>
         </div>
       </div>

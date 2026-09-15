@@ -292,10 +292,18 @@ export async function POST(request: Request) {
       console.error("CRITICAL: Refund failed:", refundError);
     }
 
-    const message = refunded
-      ? `Mint failed: ${errMsg}`
-      : `Mint failed: ${errMsg}. Credit refund FAILED — contact support`;
+    // Classify error for frontend — never expose raw blockchain messages
+    let code: string;
+    if (errMsg.toLowerCase().includes("insufficient") || errMsg.toLowerCase().includes("credit")) {
+      code = "insufficient_credits";
+    } else {
+      code = "transient";
+    }
 
-    return NextResponse.json({ error: message, refunded }, { status: 500 });
+    const message = refunded
+      ? undefined
+      : "Credit refund failed — please contact support";
+
+    return NextResponse.json({ error: message, refunded, code }, { status: 500 });
   }
 }
