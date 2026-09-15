@@ -14,6 +14,112 @@ Monad's high throughput (~10,000 TPS) and low latency (~1s block time) make it i
 ## Features
 
 ### Core Loop
+
+```mermaid
+flowchart TD
+    A[Login] -->|Google OAuth / Demo| B[Top Up Credits]
+    B --> C{Choose Pack}
+    C -->|Standard 500 CR| D[Standard Pack<br/>5 cards, 1 Rare+]
+    C -->|Booster 800 CR| E[Booster Pack<br/>10 cards, 2 Rare+]
+    D --> F[Pyth Entropy<br/>On-chain RNG]
+    E --> F
+    F --> G[Pack Reveal]
+    G --> H[Collection]
+    H --> I{What Next?}
+    I -->|Trade| J[Marketplace<br/>Buy/Sell with Crystal]
+    I -->|Print| K[Physical Card<br/>Card locked in vault]
+    I -->|Dismantle| L[Burn for Crystal<br/>Non-purchasable currency]
+    K --> M[Ship & Claim]
+    M --> N[Redeem<br/>Physical → Digital]
+    N --> H
+
+    style A fill:#8B5CF6,stroke:#7C3AED,color:#fff
+    style F fill:#00CCFF,stroke:#0099CC,color:#000
+    style G fill:#FFC466,stroke:#FF9500,color:#000
+    style H fill:#00FF88,stroke:#00CC66,color:#000
+    style J fill:#FF6BBA,stroke:#CC3388,color:#fff
+    style K fill:#FF6BBA,stroke:#CC3388,color:#fff
+    style L fill:#B4ACFF,stroke:#8B7AFF,color:#000
+```
+
+### Technical Architecture
+
+```mermaid
+flowchart LR
+    subgraph Frontend["Frontend (Next.js 16)"]
+        Login[Google OAuth<br/>+ Demo]
+        Collect[Collect Page<br/>Pack Purchase]
+        Profile[Profile Page<br/>+ Privy Wallet]
+        Admin[Admin Panel<br/>Confirm All]
+    end
+
+    subgraph Backend["Backend (API Routes)"]
+        Mint[/api/mint<br/>Request Entropy/]
+        Fulfill[/api/mint/fulfill<br/>Poll & Complete/]
+        Cards[/api/cards<br/>User Collection/]
+    end
+
+    subgraph Blockchain["Monad Testnet"]
+        Gachard[GachardCard<br/>ERC-1155]
+        Pack[PackEntropy<br/>Pyth Integration]
+        Pyth[Pyth Entropy<br/>On-chain RNG]
+    end
+
+    subgraph Database["MongoDB Atlas"]
+        Users[(users)]
+        Cards[(cards)]
+        Txs[(transactions)]
+        Templates[(card_templates)]
+    end
+
+    Login --> Mint
+    Collect --> Mint
+    Mint -->|requestPack| Pack
+    Pack -->|requestV2| Pyth
+    Pyth -->|entropyCallback| Pack
+    Fulfill -->|fulfillPack| Pack
+    Pack -->|mintBatch| Gachard
+    Fulfill --> Cards
+    Cards --> Txs
+    Admin -->|confirm-all| Fulfill
+    Profile -->|Privy SDK| Privy[Privy Embedded<br/>Optional Wallet]
+
+    style Frontend fill:#1a1a2e,stroke:#8B5CF6,color:#fff
+    style Backend fill:#1a1a2e,stroke:#00CCFF,color:#fff
+    style Blockchain fill:#1a1a2e,stroke:#00FF88,color:#fff
+    style Database fill:#1a1a2e,stroke:#FFC466,color:#fff
+```
+
+### Card Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Digital: Pack Opened
+    Digital --> Vaulted: Print Request
+    Vaulted --> Digital: Redeem
+    Digital --> Burned: Dismantle
+    Digital --> Listed: Marketplace
+    Listed --> Digital: Cancel Listing
+    Listed --> Sold: Buyer Purchases
+    Sold --> Digital: New Owner
+
+    note right of Digital
+        Default state
+        Can trade, print, dismantle
+    end note
+
+    note right of Vaulted
+        Locked in contract
+        Transfers blocked
+    end note
+
+    note right of Burned
+        Permanent on-chain burn
+        Earns Crystal currency
+    end note
+```
+
+### Additional Features
 - **Login** — Google OAuth + demo account (custodial wallet, hidden from user)
 - **Buy Pack** — Standard (5 cards / 500 Credits) or Booster (10 cards / 800 Credits)
 - **Collect** — NFT cards minted on-chain, stored in user's collection
