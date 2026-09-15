@@ -1,7 +1,9 @@
 import { getCollection } from "./mongodb";
 import { getFVM } from "./fvm";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+const MIMO_API_KEY = process.env.MIMO_API_KEY!;
+const MIMO_BASE_URL = process.env.MIMO_BASE_URL || "https://token-plan-sgp.xiaomimimo.com/v1";
+const MIMO_MODEL = process.env.MIMO_MODEL || "MiMo-V2.5-Pro";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export async function generateMarketInsight(): Promise<string> {
@@ -49,8 +51,8 @@ export async function generateMarketInsight(): Promise<string> {
     dataSummary += `- ${rarity}: ${data.recent.length} transaksi, rata-rata ${recentAvg ?? "–"} Crystal, perubahan ${change}%\n`;
   }
 
-  // Call Gemini
-  const insight = await callGemini(
+  // Call the LLM
+  const insight = await callMiMo(
     `Berdasarkan data tren harga kartu collectible berikut, tulis ringkasan 2-3 kalimat dalam bahasa Indonesia yang insightful untuk kolektor kartu. Sebutkan rarity mana yang paling bergerak dan kemungkinan alasannya (kelangkaan, demand, tren pasar). Gunakan nada profesional dan menarik.\n\n${dataSummary}`
   );
 
@@ -103,15 +105,38 @@ export async function suggestListingPrice(templateId: string): Promise<string | 
 
 Berikan rekomendasi range harga listing yang wajar dalam 1-2 kalimat bahasa Indonesia, actionable untuk penjual. Sebutkan angka spesifik. Jangan gunakan format markdown.`;
 
-  return callGemini(prompt);
+  return callMiMo(prompt);
 }
 
-async function callGemini(prompt: string): Promise<string> {
-  const { GoogleGenerativeAI } = await import("@google/generative-ai");
-  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+/**
+ * Single AI provider for the whole app (ADR-030) — same endpoint and key that
+ * lib/risk-score.ts uses, so there is one credential to configure rather than two.
+ */
+async function callMiMo(prompt: string): Promise<string> {
+  const res = await fetch(`${MIMO_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${MIMO_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MIMO_MODEL,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a collectible card market analyst. Reply in Indonesian, plain prose, no markdown.",
+        },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.4,
+    }),
+  });
 
-  const result = await model.generateContent(prompt);
-  const response = result.response;
-  return response.text().trim();
+  if (!res.ok) {
+    throw new Error(`MiMo API ${res.status}: ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  return (data.choices?.[0]?.message?.content ?? "").trim();
 }

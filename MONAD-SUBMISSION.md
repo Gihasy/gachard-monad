@@ -10,6 +10,7 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 
 ### Core Loop
 - **Login** — Google OAuth + demo account (custodial wallet, hidden from user)
+- **Credits** — Top-up and print checkout run through a simulated payment flow for the demo; no payment processor is integrated
 - **Buy Pack** — Standard (5 cards / 500 Credits) or Booster (10 cards / 800 Credits)
 - **Collect** — NFT cards minted on-chain (ERC-1155), stored in user's collection
 - **Print** — Physical card printing, card locked in vault
@@ -18,13 +19,13 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 ### Marketplace
 - **Public browsing** — Users can view listings without login
 - **Trade** — Buy/sell cards between users with Crystal currency
-- **FVM (Fair Value Model)** — AI-powered pricing based on sales history
+- **FVM (Fair Value Model)** — Fair-value pricing computed from sales history (deterministic, not AI), with an optional MiMo-generated listing-price suggestion layered on top
 - **Wishlist & Cart** — Standard e-commerce UX for marketplace
 
 ### Advanced Features
 - **Pyth Entropy Integration** — Provably fair pack randomness using on-chain verifiable RNG, replacing Math.random() with cryptographically secure seed generation
-- **Privy Embedded Wallet** — Optional self-custody wallet for advanced users, with progressive disclosure UX (wallet address verifiable on block explorer)
-- **AI Anomaly Detection** — Wash-trading detection on marketplace transactions
+- **Privy Embedded Wallet** — Optional self-custody wallet for advanced users, with progressive disclosure UX. Wallet creation and address verification on the block explorer are live; exporting the key is not available on the pinned SDK version (v1.93.0), and card export to that wallet is roadmap, not shipped
+- **AI Anomaly Detection** — Wash-trading risk scoring on marketplace trades via MiMo LLM, with the resulting score written on-chain through `recordVerification()`. Requires `MIMO_API_KEY`; without it the call degrades to a neutral score rather than failing the trade
 - **Dismantle & Crystal** — Burn cards to earn Crystal currency
 - **QR Verification** — Scan physical cards for authenticity verification
 - **Admin Console** — Full management for users, cards, transactions, prints
@@ -37,7 +38,7 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 - **Standard:** ERC-1155 (one-token-per-instance)
 - **Compiler:** Solc 0.8.28 + EVM cancun + via_ir
 - **Verification:** Sourcify exact_match on MonadVision
-- **Tests:** 76/76 passed (Foundry) — covering mint, print, redeem, transfer, burn, verification, Pyth Entropy
+- **Tests:** 78/78 passed (Foundry) — 58 GachardCard + 20 PackEntropy, covering mint, print, redeem, transfer, burn, verification, access control and the entropy flow
 
 ### Nonce Manager
 Implemented `acquireNonce()` in `blockchain.ts` with lock mechanism to handle concurrent transactions. This prevents "existing transaction had higher priority" errors when multiple users buy packs simultaneously — a critical feature for real-time TCG gameplay.
@@ -62,7 +63,23 @@ The seed is generated via Pyth's commit-reveal protocol, making it cryptographic
 
 ## Why Monad
 
-Monad's high throughput (~10,000 TPS) and low latency (~1s block time) are essential for a responsive TCG experience. Pack openings feel instant because `mintBatch()` confirms in seconds. Marketplace settlements are fast enough for real-time trading. The concurrent transaction handling (with our nonce manager) works smoothly because Monad can process multiple transactions per block without congestion — something that would be prohibitively slow on other chains.
+Monad's sub-second blocks are what make this product shape possible at all. We measured block time on Monad Testnet at **~0.3s** (sampled across 2,000 blocks), so `mintBatch()` confirms inside the pack-reveal animation rather than behind a pending spinner — the blockchain stays invisible because it is never slow enough to notice. Monad reports throughput of ~10,000 TPS; that figure is theirs, not something we measured. Marketplace settlements are fast enough for real-time trading. The concurrent transaction handling (with our nonce manager) works smoothly because Monad can process multiple transactions per block without congestion — something that would be prohibitively slow on other chains.
+
+## Scope — What Is and Is Not Built
+
+Stated plainly so nothing here has to be taken on trust:
+
+| Area | Status |
+|------|--------|
+| Buy pack → reveal → collect | Live on Monad Testnet, provably fair via Pyth Entropy |
+| Marketplace trade, wishlist, cart | Live |
+| Dismantle → Crystal | Live |
+| Print request → vault lock → redeem | Live end-to-end in software; no physical card has been produced and redeemed yet |
+| AI risk scoring + market insight | Code live and wired; requires `MIMO_API_KEY` to be set in the deployment |
+| Privy self-custody wallet | Creation and address verification live; key export unavailable on v1.93.0 |
+| AI vision card verification | Not built. QR + on-chain lookup is the only verification today |
+| Gameplay (`/play`) | Not built — marked "Coming Soon" in the app |
+| Payments | Simulated; no processor integrated |
 
 ## Links
 
@@ -73,7 +90,7 @@ Monad's high throughput (~10,000 TPS) and low latency (~1s block time) are essen
 | GachardCard (Verified) | https://testnet.monadvision.com/address/0x2a05a2e3b0e7355b97de593e354063e9474c9d08 |
 | PackEntropy (Verified) | https://testnet.monadvision.com/address/0x6B53C35e8baBaaBe4DD725573C3f612121764542 |
 | Pack Verification | https://gachard-monad.vercel.app/api/verify/pack/[txHash] |
-| GitHub | https://github.com/Gihasy/Gachard-Monad |
+| GitHub | https://github.com/Gihasy/gachard-monad |
 
 ---
 

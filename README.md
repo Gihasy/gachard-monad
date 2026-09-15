@@ -2,7 +2,7 @@
 
 A digital-native collectible card game (TCG) platform built on **Monad Testnet**. Brands and IP owners can issue cards that users buy, collect, print as physical cards, and redeem back to digital — with blockchain completely hidden from the end user.
 
-Monad's high throughput (~10,000 TPS) and low latency (~1s block time) make it ideal for a responsive TCG experience where mint, trade, and marketplace operations feel instant.
+Monad's sub-second blocks make it viable to treat a pack opening as a synchronous, consumer-grade interaction. Measured block time on Monad Testnet is **~0.3s** (sampled over 2,000 blocks), which is what lets `mintBatch()` confirm inside the reveal animation rather than behind a pending spinner. Monad reports throughput of ~10,000 TPS; we have not independently measured that.
 
 ## Live Demo
 
@@ -119,7 +119,7 @@ stateDiagram-v2
     end note
 ```
 
-### Additional Features
+### Core Loop Detail
 - **Login** — Google OAuth + demo account (custodial wallet, hidden from user)
 - **Buy Pack** — Standard (5 cards / 500 Credits) or Booster (10 cards / 800 Credits)
 - **Collect** — NFT cards minted on-chain, stored in user's collection
@@ -179,8 +179,8 @@ See `frontend/.env.local.example`.
 | Smart Contracts | Solidity 0.8.28, Foundry, OpenZeppelin v5 |
 | Wallet | Custodial (ethers.js v6), sponsored gas |
 | Auth | Google OAuth + demo accounts |
-| Payment | Stripe Test Mode (credit + direct) |
-| AI | Gemini API (market insight) |
+| Payment | Simulated checkout (demo) — no payment processor integrated |
+| AI | MiMo LLM (trade risk scoring, market insight, price suggestion) |
 | RNG | Pyth Entropy (on-chain verifiable) |
 | Wallet (optional) | Privy Embedded Wallet (self-custody, v1.93.0) |
 | Hosting | Vercel (frontend + backend) |
@@ -198,10 +198,11 @@ See `frontend/.env.local.example`.
 - **ADR-025**: AI Anomaly Detection Oracle
 - **ADR-026**: Dismantle & Crystal (burn-to-earn)
 - **ADR-027**: Become a Creator (whitelist form)
-- **ADR-028**: Pyth Entropy for provably fair pack randomness
-- **ADR-029**: Privy Integration (optional self-custody wallet)
+- **ADR-028**: Privy Integration (optional self-custody wallet)
+- **ADR-029**: Pyth Entropy for provably fair pack randomness
+- **ADR-030**: MiMo as the single AI provider
 
-See `DECISIONS.md` for all 29 ADRs.
+See `DECISIONS.md` for all 30 ADRs.
 
 ### Project Structure
 ```
@@ -214,13 +215,12 @@ gachard-monad/
 │   └── public/        # Static assets
 ├── contracts/         # Solidity smart contracts (Foundry)
 │   ├── src/           # GachardCard.sol + PackEntropy.sol
-│   ├── test/          # 76 test cases
+│   ├── test/          # 78 test cases
 │   └── script/        # Deploy scripts
 ├── docs/              # Documentation
 ├── scripts/           # Deployment scripts
 ├── MEMORY.md          # Project status & rules
-├── DECISIONS.md       # Architecture decisions (28 ADRs)
-└── vercel.json        # Vercel deployment config
+├── DECISIONS.md       # Architecture decisions (30 ADRs)
 ```
 
 ## Deployment
@@ -248,7 +248,7 @@ forge script script/DeployPackEntropy.s.sol --rpc-url monad_testnet --broadcast
    - Root Directory: `frontend`
 3. Environment Variables:
    - `MONGODB_URL` — MongoDB Atlas connection string
-   - `DATABASE_NAME` — gachard-monad
+   - `DATABASE_NAME` — gachard
    - `GOOGLE_CLIENT_ID` — Google OAuth Client ID
    - `GOOGLE_CLIENT_SECRET` — Google OAuth Client Secret
    - `CONTRACT_ADDRESS` — GachardCard contract address
@@ -261,6 +261,9 @@ forge script script/DeployPackEntropy.s.sol --rpc-url monad_testnet --broadcast
    - `ENCRYPTION_SECRET_KEY` — AES-256-GCM key (min 32 chars)
     - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — Admin console credentials
     - `NEXT_PUBLIC_PRIVY_APP_ID` — Privy App ID for embedded wallet (optional)
+   - `NEXT_PUBLIC_CONTRACT_ADDRESS` — GachardCard address for client-side links (admin panel)
+   - `MIMO_API_KEY` — MiMo LLM key. **Required for AI features.** Without it, trade risk
+     scoring and market insight silently return "AI scoring unavailable" instead of failing
 
 ### Database Scripts
 ```bash
@@ -289,11 +292,11 @@ All blockchain transactions are verifiable on Monad Explorer:
 ## Smart Contract Tests
 
 ```
-Ran 76 tests — 76 passed, 0 failed, 0 skipped
+Ran 78 tests — 78 passed, 0 failed, 0 skipped
 Compiler: Solc 0.8.28 + EVM cancun + via_ir
 ```
 
-Test coverage: mint, print, redeem, transfer, burn, verification, access control, events, error handling, Pyth Entropy integration (18 tests).
+Test coverage: mint, print, redeem, transfer, burn, verification, access control, events, error handling, Pyth Entropy integration (20 tests).
 
 ## Pyth Entropy Integration
 
@@ -324,9 +327,9 @@ Under this planned feature, cards could later be brought back into the Gachard e
 
 ### AI Vision Verification (Planned)
 
-AI-powered visual card analysis (Google Gemini) is planned as a complementary verification layer alongside the existing QR-based on-chain lookup. This is a required eligibility criterion for the hackathon's "AI x Web3" theme and is targeted for completion before the final submission deadline.
+AI-powered visual card analysis is planned as a complementary verification layer alongside the existing QR-based on-chain lookup — comparing a photographed card against its on-chain template to catch forgeries that carry a valid-looking QR code.
 
-**Current status:** Reference code exists in `lib/vision.ts` but is not active. QR-based verification is the current method.
+**Current status:** Not implemented. No vision code exists yet. QR-based verification is the only method today. The AI that *is* live is text-based: trade risk scoring and marketplace insight, both via MiMo.
 
 ## Notes for AI Coding Agents
 - Read `MEMORY.md`, `DECISIONS.md`, and `docs/` before making changes
