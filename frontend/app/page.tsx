@@ -7,6 +7,9 @@ import HomeFeaturedCards from "@/components/home/HomeFeaturedCards";
 import HomeWhyGachard from "@/components/home/HomeWhyGachard";
 import HomeCoreLoop from "@/components/home/HomeCoreLoop";
 import HomeCtaBand from "@/components/home/HomeCtaBand";
+// Mounted here rather than in layout.tsx so it appears on the homepage only —
+// which also stops its supporter-count fetch from firing on every route.
+import SupportGachard from "@/components/support/SupportGachard";
 
 interface SessionUser {
   user_id: string;
@@ -34,6 +37,7 @@ export default function Home() {
       <HomeCoreLoop />
       <HomeFeaturedCards />
       <HomeCtaBand />
+      <SupportGachard />
     </div>
   );
 }

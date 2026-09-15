@@ -4,7 +4,6 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
-import SupportGachard from "@/components/support/SupportGachard";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -67,7 +66,6 @@ export default function RootLayout({
           {children}
         </main>
         <Footer />
-        <SupportGachard />
         <ServiceWorkerRegister />
       </body>
     </html>
