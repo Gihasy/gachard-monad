@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     newBalance = await deductCredits(userId, pack.price);
   } catch {
     return NextResponse.json(
-      { error: "Insufficient credit balance", price: pack.price },
+      { error: "Insufficient credit balance", price: pack.price, code: "insufficient_credits" },
       { status: 402 }
     );
   }
