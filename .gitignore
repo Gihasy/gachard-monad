@@ -84,3 +84,6 @@ sessions/
 # or it will be overridden.
 !.env.local.example
 !frontend/.env.local.example
+
+# Pitch preparation — strategy notes and candid weaknesses, not for the public repo.
+docs/PITCH-PREP.md
