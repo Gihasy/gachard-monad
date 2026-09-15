@@ -312,6 +312,22 @@ Pack rarity is determined by **Pyth Entropy**, an on-chain verifiable RNG protoc
 
 All costs are sponsored by the platform — users only pay with Credits.
 
+## Roadmap
+
+### True Digital Ownership (Planned)
+
+Building on the self-custody wallet foundation (Privy integration, currently live as a view-only "For Advanced Users" section), we are exploring the ability to let users export their cards to their own wallet — giving them full, verifiable ownership outside the Gachard platform.
+
+Under this planned feature, cards could later be brought back into the Gachard ecosystem (re-imported) to resume in-app features such as marketplace trading, printing, and dismantling. This would complete the loop between custodial simplicity and true blockchain ownership, letting users choose their own level of control.
+
+**Current status:** Self-custody wallet creation and address verification are live. Card export and re-import are planned — not yet implemented.
+
+### AI Vision Verification (Planned)
+
+AI-powered visual card analysis (Google Gemini) is planned as a complementary verification layer alongside the existing QR-based on-chain lookup. This is a required eligibility criterion for the hackathon's "AI x Web3" theme and is targeted for completion before the final submission deadline.
+
+**Current status:** Reference code exists in `lib/vision.ts` but is not active. QR-based verification is the current method.
+
 ## Notes for AI Coding Agents
 - Read `MEMORY.md`, `DECISIONS.md`, and `docs/` before making changes
 - Do not use blockchain/crypto/on-chain terminology in user-facing UI
