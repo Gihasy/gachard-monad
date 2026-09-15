@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Fragment } from "react";
 import PageShell from "@/components/PageShell";
 
 type AdminUser = {
@@ -75,6 +75,147 @@ const RARITY_LABELS = ["Common", "Rare", "Epic", "Legendary"];
 const EXPLORER_TX = "https://testnet.monadvision.com/tx/";
 const EXPLORER_TOKEN = "https://testnet.monadvision.com/nft/";
 const CONTRACT_ADDR = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x2a05a2e3b0e7355b97de593e354063e9474c9d08").trim();
+
+/* ─── Shared filter/sort controls ─── */
+
+const selectStyle: React.CSSProperties = {
+  backgroundColor: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.15)",
+  color: "rgba(255,255,255,0.85)",
+  borderRadius: "0.5rem",
+  padding: "0.375rem 0.75rem",
+  fontSize: "0.75rem",
+  outline: "none",
+  cursor: "pointer",
+};
+
+const optionStyle: React.CSSProperties = {
+  backgroundColor: "#1a1a2e",
+  color: "rgba(255,255,255,0.85)",
+};
+
+const searchStyle: React.CSSProperties = {
+  ...selectStyle,
+  cursor: "text",
+  minWidth: "14rem",
+};
+
+type Option = { value: string; label: string };
+type FilterConfig = { key: string; label: string; options: Option[] };
+
+/** Case-insensitive substring match across any of the given fields. */
+function matches(query: string, ...fields: (string | number | null | undefined)[]): boolean {
+  if (!query.trim()) return true;
+  const q = query.trim().toLowerCase();
+  return fields.some((f) => f !== null && f !== undefined && String(f).toLowerCase().includes(q));
+}
+
+const asTime = (v: string | null | undefined) => (v ? new Date(v).getTime() : 0);
+const asNum = (v: number | null | undefined) => (v === null || v === undefined ? -Infinity : v);
+const asText = (v: string | null | undefined) => (v ?? "").toLowerCase();
+const byText = (a: string | null | undefined, b: string | null | undefined) =>
+  asText(a).localeCompare(asText(b));
+
+/** Filter + sort control bar shared by every admin tab. */
+function TableControls({
+  testId,
+  search,
+  onSearchChange,
+  searchPlaceholder,
+  filters = [],
+  filterValues = {},
+  onFilterChange,
+  sortOptions,
+  sort,
+  onSortChange,
+  total,
+  filtered,
+}: {
+  testId: string;
+  search?: string;
+  onSearchChange?: (v: string) => void;
+  searchPlaceholder?: string;
+  filters?: FilterConfig[];
+  filterValues?: Record<string, string>;
+  onFilterChange?: (key: string, value: string) => void;
+  sortOptions: Option[];
+  sort: string;
+  onSortChange: (v: string) => void;
+  total: number;
+  filtered: number;
+}) {
+  const hasSearch = onSearchChange !== undefined;
+  const isFiltered = filtered !== total;
+  const activeFilters = Object.values(filterValues).filter((v) => v !== "all").length;
+  const canReset = activeFilters > 0 || (hasSearch && !!search);
+
+  const reset = () => {
+    onSearchChange?.("");
+    for (const f of filters) onFilterChange?.(f.key, "all");
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 mb-4" data-testid={testId}>
+      {hasSearch && (
+        <input
+          type="search"
+          value={search ?? ""}
+          onChange={(e) => onSearchChange?.(e.target.value)}
+          placeholder={searchPlaceholder || "Search…"}
+          style={searchStyle}
+          data-testid={`${testId}-search`}
+        />
+      )}
+
+      {filters.map((f) => (
+        <div key={f.key} className="flex items-center gap-2">
+          <span className="text-[0.62rem] uppercase tracking-widest text-white/40">{f.label}</span>
+          <select
+            value={filterValues[f.key] ?? "all"}
+            onChange={(e) => onFilterChange?.(f.key, e.target.value)}
+            style={selectStyle}
+            data-testid={`${testId}-${f.key}`}
+          >
+            <option value="all" style={optionStyle}>All</option>
+            {f.options.map((o) => (
+              <option key={o.value} value={o.value} style={optionStyle}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+      ))}
+
+      <div className="flex items-center gap-2">
+        <span className="text-[0.62rem] uppercase tracking-widest text-white/40">Sort</span>
+        <select
+          value={sort}
+          onChange={(e) => onSortChange(e.target.value)}
+          style={selectStyle}
+          data-testid={`${testId}-sort`}
+        >
+          {sortOptions.map((o) => (
+            <option key={o.value} value={o.value} style={optionStyle}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {canReset && (
+        <button
+          onClick={reset}
+          className="btn-ghost !py-1.5 !px-3 !text-[0.65rem]"
+          data-testid={`${testId}-reset`}
+        >
+          Reset
+        </button>
+      )}
+
+      {isFiltered && (
+        <span className="text-[0.6rem] text-white/30 ml-auto" data-testid={`${testId}-count`}>
+          {filtered} of {total}
+        </span>
+      )}
+    </div>
+  );
+}
 
 type PendingCard = {
   cardId: string | null;
@@ -178,11 +319,37 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [txTypeFilter, setTxTypeFilter] = useState<string>("all");
-  const [txRiskFilter, setTxRiskFilter] = useState<string>("all");
-  const [cardSearch, setCardSearch] = useState<string>("");
-  const [cardStatusFilter, setCardStatusFilter] = useState<string>("all");
-  const [cardRarityFilter, setCardRarityFilter] = useState<string>("all");
+  // Per-tab search / filter / sort state. Each tab keeps its own selection so
+  // switching tabs never discards what you had narrowed down.
+  const [searchBy, setSearchBy] = useState<Record<TabKey, string>>({
+    cards: "", transactions: "", dismantle: "", prints: "",
+    health: "", users: "", supporters: "", creators: "",
+  });
+  const [filterBy, setFilterBy] = useState<Record<TabKey, Record<string, string>>>({
+    cards: {}, transactions: {}, dismantle: {}, prints: {},
+    health: {}, users: {}, supporters: {}, creators: {},
+  });
+  const [sortBy, setSortBy] = useState<Record<TabKey, string>>({
+    cards: "newest", transactions: "newest", dismantle: "newest", prints: "newest",
+    health: "longest", users: "newest", supporters: "newest", creators: "newest",
+  });
+
+  const onSearch = useCallback(
+    (t: TabKey) => (v: string) => setSearchBy((p) => ({ ...p, [t]: v })),
+    []
+  );
+  const onFilter = useCallback(
+    (t: TabKey) => (k: string, v: string) =>
+      setFilterBy((p) => ({ ...p, [t]: { ...p[t], [k]: v } })),
+    []
+  );
+  const onSort = useCallback(
+    (t: TabKey) => (v: string) => setSortBy((p) => ({ ...p, [t]: v })),
+    []
+  );
+
+  /** Read a tab's filter value, defaulting to "all". */
+  const fv = (t: TabKey, k: string) => filterBy[t][k] ?? "all";
 
   const fetchAll = useCallback(() => {
     setLoading(true);
@@ -219,45 +386,179 @@ export default function AdminPage() {
     fetchAll();
   }, [fetchAll]);
 
-  const filteredTxs = txs.filter((tx) => {
-    if (txTypeFilter !== "all" && tx.type !== txTypeFilter) return false;
-    if (txRiskFilter === "flagged" && !tx.flagged) return false;
-    if (txRiskFilter === "high" && (tx.riskScore === null || tx.riskScore < 70)) return false;
-    if (txRiskFilter === "medium" && (tx.riskScore === null || tx.riskScore < 30 || tx.riskScore >= 70)) return false;
-    if (txRiskFilter === "low" && (tx.riskScore === null || tx.riskScore >= 30)) return false;
-    if (txRiskFilter === "none" && tx.riskScore !== null) return false;
-    return true;
-  });
-
+  // ── Option lists derived from the live data ──
   const txTypes = [...new Set(txs.map((t) => t.type))].sort();
-
-  const filteredCards = cards.filter((c) => {
-    if (cardStatusFilter !== "all" && c.status !== cardStatusFilter) return false;
-    if (cardRarityFilter !== "all" && c.rarity !== Number(cardRarityFilter)) return false;
-    if (cardSearch) {
-      const q = cardSearch.toLowerCase();
-      const match =
-        (c.cardId && c.cardId.toLowerCase().includes(q)) ||
-        (c.tokenId !== null && String(c.tokenId).includes(q)) ||
-        (c.templateId && c.templateId.toLowerCase().includes(q)) ||
-        (c.ownerUsername && c.ownerUsername.toLowerCase().includes(q)) ||
-        (c.ownerAddress && c.ownerAddress.toLowerCase().includes(q));
-      if (!match) return false;
-    }
-    return true;
-  });
-
+  const txStatuses = [...new Set(txs.map((t) => t.status))].sort();
   const cardStatuses = [...new Set(cards.map((c) => c.status))].sort();
+  const printFulfillments = [...new Set(prints.map((p) => p.fulfillmentStatus).filter(Boolean))].sort() as string[];
+  const creatorStatuses = [...new Set(creatorApps.map((c) => c.status))].sort();
+  const creatorIpTypes = [...new Set(creatorApps.map((c) => c.ipType).filter(Boolean))].sort();
+
+  const toOptions = (values: string[]) => values.map((v) => ({ value: v, label: v }));
+  const RARITY_OPTIONS = RARITY_LABELS.map((label, i) => ({ value: String(i), label }));
+
+  /** Risk band filter shared by transactions and dismantle. */
+  const matchesRisk = (score: number | null, flagged: boolean, band: string) => {
+    if (band === "all") return true;
+    if (band === "flagged") return flagged;
+    if (band === "none") return score === null;
+    if (score === null) return false;
+    if (band === "high") return score >= 70;
+    if (band === "medium") return score >= 30 && score < 70;
+    if (band === "low") return score < 30;
+    return true;
+  };
+
+  // ── Transactions ──
+  const filteredTxs = txs
+    .filter((tx) => {
+      if (fv("transactions", "type") !== "all" && tx.type !== fv("transactions", "type")) return false;
+      if (fv("transactions", "status") !== "all" && tx.status !== fv("transactions", "status")) return false;
+      if (!matchesRisk(tx.riskScore, tx.flagged, fv("transactions", "risk"))) return false;
+      return matches(searchBy.transactions, tx.id, tx.txHash, tx.type, tx.status, tx.fromAddress, tx.toAddress, tx.tokenId);
+    })
+    .sort((a, b) => {
+      switch (sortBy.transactions) {
+        case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
+        case "risk_high": return asNum(b.riskScore) - asNum(a.riskScore);
+        case "risk_low": return asNum(a.riskScore) - asNum(b.riskScore);
+        case "amount_high": return asNum(b.amount) - asNum(a.amount);
+        case "amount_low": return asNum(a.amount) - asNum(b.amount);
+        case "type": return byText(a.type, b.type);
+        default: return asTime(b.createdAt) - asTime(a.createdAt);
+      }
+    });
+
+  // ── Cards ──
+  const filteredCards = cards
+    .filter((c) => {
+      if (fv("cards", "status") !== "all" && c.status !== fv("cards", "status")) return false;
+      if (fv("cards", "rarity") !== "all" && c.rarity !== Number(fv("cards", "rarity"))) return false;
+      const ff = fv("cards", "fulfillment");
+      if (ff !== "all" && (c.fulfillmentStatus ?? "none") !== ff) return false;
+      return matches(searchBy.cards, c.cardId, c.tokenId, c.templateId, c.ownerUsername, c.ownerAddress);
+    })
+    .sort((a, b) => {
+      switch (sortBy.cards) {
+        case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
+        case "token_asc": return asNum(a.tokenId) - asNum(b.tokenId);
+        case "token_desc": return asNum(b.tokenId) - asNum(a.tokenId);
+        case "rarity_high": return b.rarity - a.rarity;
+        case "rarity_low": return a.rarity - b.rarity;
+        case "owner": return byText(a.ownerUsername, b.ownerUsername);
+        default: return asTime(b.createdAt) - asTime(a.createdAt);
+      }
+    });
+
+  // ── Dismantle ──
+  const dismantleTxs = txs
+    .filter((t) => t.type === "dismantled")
+    .filter((t) => {
+      if (fv("dismantle", "rarity") !== "all" && t.rarity !== Number(fv("dismantle", "rarity"))) return false;
+      return matches(searchBy.dismantle, t.id, t.txHash, t.tokenId, t.fromAddress);
+    })
+    .sort((a, b) => {
+      switch (sortBy.dismantle) {
+        case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
+        case "crystal_high": return asNum(b.amount) - asNum(a.amount);
+        case "crystal_low": return asNum(a.amount) - asNum(b.amount);
+        case "rarity_high": return asNum(b.rarity) - asNum(a.rarity);
+        case "rarity_low": return asNum(a.rarity) - asNum(b.rarity);
+        default: return asTime(b.createdAt) - asTime(a.createdAt);
+      }
+    });
+
+  // ── Print requests ──
+  const filteredPrints = prints
+    .filter((p) => {
+      const acc = fv("prints", "accepted");
+      if (acc === "yes" && !p.accepted) return false;
+      if (acc === "no" && p.accepted) return false;
+      const ff = fv("prints", "fulfillment");
+      if (ff !== "all" && (p.fulfillmentStatus ?? "none") !== ff) return false;
+      return matches(
+        searchBy.prints,
+        p.tokenId, p.redeemCode, p.user?.username, p.user?.email,
+        p.shippingAddress?.recipientName, p.shippingAddress?.city
+      );
+    })
+    .sort((a, b) => {
+      switch (sortBy.prints) {
+        case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
+        case "updated": return asTime(b.updatedAt) - asTime(a.updatedAt);
+        case "token_asc": return asNum(a.tokenId) - asNum(b.tokenId);
+        case "token_desc": return asNum(b.tokenId) - asNum(a.tokenId);
+        default: return asTime(b.createdAt) - asTime(a.createdAt);
+      }
+    });
+
+  // ── Health (pending mints) ──
+  const filteredPending = pendingCards
+    .filter((c) => {
+      const st = fv("health", "stale");
+      if (st === "stale" && !c.isStale) return false;
+      if (st === "fresh" && c.isStale) return false;
+      if (fv("health", "rarity") !== "all" && c.rarityCode !== Number(fv("health", "rarity"))) return false;
+      return matches(searchBy.health, c.cardId, c.tokenId, c.templateId, c.ownerUsername, c.txHash, c.txStatus);
+    })
+    .sort((a, b) => {
+      switch (sortBy.health) {
+        case "shortest": return a.pendingMs - b.pendingMs;
+        case "newest": return asTime(b.createdAt) - asTime(a.createdAt);
+        case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
+        default: return b.pendingMs - a.pendingMs; // longest pending first
+      }
+    });
+
+  // ── Users ──
+  const filteredUsers = users
+    .filter((u) => matches(searchBy.users, u.email, u.username, u.walletAddress))
+    .sort((a, b) => {
+      switch (sortBy.users) {
+        case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
+        case "username": return byText(a.username, b.username);
+        case "username_desc": return byText(b.username, a.username);
+        case "email": return byText(a.email, b.email);
+        default: return asTime(b.createdAt) - asTime(a.createdAt);
+      }
+    });
+
+  // ── Supporters ──
+  const filteredSupporters = supporters
+    .filter((s) => matches(searchBy.supporters, s.email, s.message))
+    .sort((a, b) => {
+      switch (sortBy.supporters) {
+        case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
+        case "email": return byText(a.email, b.email);
+        default: return asTime(b.createdAt) - asTime(a.createdAt);
+      }
+    });
+
+  // ── Creator applications ──
+  const filteredCreators = creatorApps
+    .filter((c) => {
+      if (fv("creators", "status") !== "all" && c.status !== fv("creators", "status")) return false;
+      if (fv("creators", "ipType") !== "all" && c.ipType !== fv("creators", "ipType")) return false;
+      return matches(searchBy.creators, c.name, c.brandName, c.email, c.socialMedia, c.ipType, c.interest);
+    })
+    .sort((a, b) => {
+      switch (sortBy.creators) {
+        case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
+        case "name": return byText(a.name, b.name);
+        case "brand": return byText(a.brandName, b.brandName);
+        default: return asTime(b.createdAt) - asTime(a.createdAt);
+      }
+    });
 
   const count =
-    tab === "users" ? users.length :
+    tab === "users" ? filteredUsers.length :
     tab === "transactions" ? filteredTxs.length :
     tab === "cards" ? filteredCards.length :
-    tab === "prints" ? prints.length :
-    tab === "supporters" ? supporters.length :
-    tab === "dismantle" ? txs.filter((t) => t.type === "dismantled").length :
-    tab === "creators" ? creatorApps.length :
-    pendingCards.length;
+    tab === "prints" ? filteredPrints.length :
+    tab === "supporters" ? filteredSupporters.length :
+    tab === "dismantle" ? dismantleTxs.length :
+    tab === "creators" ? filteredCreators.length :
+    filteredPending.length;
 
   const pendingPrints = prints.filter((p) => (p.card?.fulfillmentStatus || p.fulfillmentStatus) !== "Real").length;
   const newPrintRequests = prints.filter((p) => (p.card?.fulfillmentStatus || p.fulfillmentStatus) === "Locked").length;
@@ -357,15 +658,63 @@ export default function AdminPage() {
           <p className="text-xs text-white/40 mb-3 uppercase tracking-widest" data-testid="admin-count">
             {count} record{count === 1 ? "" : "s"}
           </p>
-          {tab === "users" && <UsersTable users={users} />}
+          {tab === "users" && (
+            <>
+              <TableControls
+                testId="users-controls"
+                search={searchBy.users}
+                onSearchChange={onSearch("users")}
+                searchPlaceholder="Search email, username, wallet…"
+                sortOptions={[
+                  { value: "newest", label: "Newest joined" },
+                  { value: "oldest", label: "Oldest joined" },
+                  { value: "username", label: "Username A–Z" },
+                  { value: "username_desc", label: "Username Z–A" },
+                  { value: "email", label: "Email A–Z" },
+                ]}
+                sort={sortBy.users}
+                onSortChange={onSort("users")}
+                total={users.length}
+                filtered={filteredUsers.length}
+              />
+              <UsersTable users={filteredUsers} />
+            </>
+          )}
           {tab === "transactions" && (
             <>
-              <TxFilterBar
-                txTypes={txTypes}
-                typeFilter={txTypeFilter}
-                onTypeChange={setTxTypeFilter}
-                riskFilter={txRiskFilter}
-                onRiskChange={setTxRiskFilter}
+              <TableControls
+                testId="tx-controls"
+                search={searchBy.transactions}
+                onSearchChange={onSearch("transactions")}
+                searchPlaceholder="Search invoice, txHash, address…"
+                filters={[
+                  { key: "type", label: "Type", options: toOptions(txTypes) },
+                  { key: "status", label: "Status", options: toOptions(txStatuses) },
+                  {
+                    key: "risk",
+                    label: "Risk",
+                    options: [
+                      { value: "flagged", label: "Flagged" },
+                      { value: "high", label: "High (\u226570)" },
+                      { value: "medium", label: "Medium (30-69)" },
+                      { value: "low", label: "Low (<30)" },
+                      { value: "none", label: "No Score" },
+                    ],
+                  },
+                ]}
+                filterValues={filterBy.transactions}
+                onFilterChange={onFilter("transactions")}
+                sortOptions={[
+                  { value: "newest", label: "Newest first" },
+                  { value: "oldest", label: "Oldest first" },
+                  { value: "risk_high", label: "Risk high → low" },
+                  { value: "risk_low", label: "Risk low → high" },
+                  { value: "amount_high", label: "Amount high → low" },
+                  { value: "amount_low", label: "Amount low → high" },
+                  { value: "type", label: "Type A–Z" },
+                ]}
+                sort={sortBy.transactions}
+                onSortChange={onSort("transactions")}
                 total={txs.length}
                 filtered={filteredTxs.length}
               />
@@ -374,14 +723,39 @@ export default function AdminPage() {
           )}
           {tab === "cards" && (
             <>
-              <CardsFilterBar
-                cardStatuses={cardStatuses}
-                statusFilter={cardStatusFilter}
-                onStatusChange={setCardStatusFilter}
-                rarityFilter={cardRarityFilter}
-                onRarityChange={setCardRarityFilter}
-                search={cardSearch}
-                onSearchChange={setCardSearch}
+              <TableControls
+                testId="cards-controls"
+                search={searchBy.cards}
+                onSearchChange={onSearch("cards")}
+                searchPlaceholder="Search token, card ID, owner…"
+                filters={[
+                  { key: "status", label: "Status", options: toOptions(cardStatuses) },
+                  { key: "rarity", label: "Rarity", options: RARITY_OPTIONS },
+                  {
+                    key: "fulfillment",
+                    label: "Fulfillment",
+                    options: [
+                      { value: "Locked", label: "Locked" },
+                      { value: "Printing", label: "Printing" },
+                      { value: "Shipping", label: "Shipping" },
+                      { value: "Real", label: "Real" },
+                      { value: "none", label: "None" },
+                    ],
+                  },
+                ]}
+                filterValues={filterBy.cards}
+                onFilterChange={onFilter("cards")}
+                sortOptions={[
+                  { value: "newest", label: "Newest first" },
+                  { value: "oldest", label: "Oldest first" },
+                  { value: "token_asc", label: "Token ID ↑" },
+                  { value: "token_desc", label: "Token ID ↓" },
+                  { value: "rarity_high", label: "Rarity high → low" },
+                  { value: "rarity_low", label: "Rarity low → high" },
+                  { value: "owner", label: "Owner A–Z" },
+                ]}
+                sort={sortBy.cards}
+                onSortChange={onSort("cards")}
                 total={cards.length}
                 filtered={filteredCards.length}
               />
@@ -404,20 +778,155 @@ export default function AdminPage() {
                   Fix Claimed Cards
                 </button>
               </div>
-              <PrintRequestsTable prints={prints} onAccept={fetchAll} />
+              <TableControls
+                testId="prints-controls"
+                search={searchBy.prints}
+                onSearchChange={onSearch("prints")}
+                searchPlaceholder="Search token, code, recipient…"
+                filters={[
+                  {
+                    key: "accepted",
+                    label: "Accepted",
+                    options: [
+                      { value: "yes", label: "Accepted" },
+                      { value: "no", label: "Not accepted" },
+                    ],
+                  },
+                  {
+                    key: "fulfillment",
+                    label: "Fulfillment",
+                    options: [...toOptions(printFulfillments), { value: "none", label: "None" }],
+                  },
+                ]}
+                filterValues={filterBy.prints}
+                onFilterChange={onFilter("prints")}
+                sortOptions={[
+                  { value: "newest", label: "Newest request" },
+                  { value: "oldest", label: "Oldest request" },
+                  { value: "updated", label: "Recently updated" },
+                  { value: "token_asc", label: "Token ID ↑" },
+                  { value: "token_desc", label: "Token ID ↓" },
+                ]}
+                sort={sortBy.prints}
+                onSortChange={onSort("prints")}
+                total={prints.length}
+                filtered={filteredPrints.length}
+              />
+              <PrintRequestsTable prints={filteredPrints} onAccept={fetchAll} />
             </>
           )}
           {tab === "health" && (
-            <HealthTable
-              pendingCards={pendingCards}
-              meta={pendingMeta}
-              confirmingAll={confirmingAll}
-              onConfirmAll={handleConfirmAll}
-            />
+            <>
+              <TableControls
+                testId="health-controls"
+                search={searchBy.health}
+                onSearchChange={onSearch("health")}
+                searchPlaceholder="Search token, owner, txHash…"
+                filters={[
+                  {
+                    key: "stale",
+                    label: "Age",
+                    options: [
+                      { value: "stale", label: "Stale only" },
+                      { value: "fresh", label: "Fresh only" },
+                    ],
+                  },
+                  { key: "rarity", label: "Rarity", options: RARITY_OPTIONS },
+                ]}
+                filterValues={filterBy.health}
+                onFilterChange={onFilter("health")}
+                sortOptions={[
+                  { value: "longest", label: "Longest pending" },
+                  { value: "shortest", label: "Shortest pending" },
+                  { value: "newest", label: "Newest first" },
+                  { value: "oldest", label: "Oldest first" },
+                ]}
+                sort={sortBy.health}
+                onSortChange={onSort("health")}
+                total={pendingCards.length}
+                filtered={filteredPending.length}
+              />
+              <HealthTable
+                pendingCards={filteredPending}
+                meta={pendingMeta}
+                confirmingAll={confirmingAll}
+                onConfirmAll={handleConfirmAll}
+              />
+            </>
           )}
-          {tab === "supporters" && <SupportersTable supporters={supporters} />}
-          {tab === "dismantle" && <DismantleTable txs={txs.filter((t) => t.type === "dismantled")} cards={cards} users={users} />}
-          {tab === "creators" && <CreatorAppsTable apps={creatorApps} />}
+          {tab === "supporters" && (
+            <>
+              <TableControls
+                testId="supporters-controls"
+                search={searchBy.supporters}
+                onSearchChange={onSearch("supporters")}
+                searchPlaceholder="Search email or message…"
+                sortOptions={[
+                  { value: "newest", label: "Newest first" },
+                  { value: "oldest", label: "Oldest first" },
+                  { value: "email", label: "Email A–Z" },
+                ]}
+                sort={sortBy.supporters}
+                onSortChange={onSort("supporters")}
+                total={supporters.length}
+                filtered={filteredSupporters.length}
+              />
+              <SupportersTable supporters={filteredSupporters} />
+            </>
+          )}
+          {tab === "dismantle" && (
+            <>
+              <TableControls
+                testId="dismantle-controls"
+                search={searchBy.dismantle}
+                onSearchChange={onSearch("dismantle")}
+                searchPlaceholder="Search token, txHash, owner…"
+                filters={[{ key: "rarity", label: "Rarity", options: RARITY_OPTIONS }]}
+                filterValues={filterBy.dismantle}
+                onFilterChange={onFilter("dismantle")}
+                sortOptions={[
+                  { value: "newest", label: "Newest first" },
+                  { value: "oldest", label: "Oldest first" },
+                  { value: "crystal_high", label: "Crystal high → low" },
+                  { value: "crystal_low", label: "Crystal low → high" },
+                  { value: "rarity_high", label: "Rarity high → low" },
+                  { value: "rarity_low", label: "Rarity low → high" },
+                ]}
+                sort={sortBy.dismantle}
+                onSortChange={onSort("dismantle")}
+                total={txs.filter((t) => t.type === "dismantled").length}
+                filtered={dismantleTxs.length}
+              />
+              <DismantleTable txs={dismantleTxs} cards={cards} users={users} />
+            </>
+          )}
+          {tab === "creators" && (
+            <>
+              <TableControls
+                testId="creators-controls"
+                search={searchBy.creators}
+                onSearchChange={onSearch("creators")}
+                searchPlaceholder="Search name, brand, email…"
+                filters={[
+                  { key: "status", label: "Status", options: toOptions(creatorStatuses) },
+                  { key: "ipType", label: "IP Type", options: toOptions(creatorIpTypes) },
+                ]}
+                filterValues={filterBy.creators}
+                onFilterChange={onFilter("creators")}
+                sortOptions={[
+                  { value: "newest", label: "Newest first" },
+                  { value: "oldest", label: "Oldest first" },
+                  { value: "name", label: "Name A–Z" },
+                  { value: "brand", label: "Brand A–Z" },
+                ]}
+                sort={sortBy.creators}
+                onSortChange={onSort("creators")}
+                total={creatorApps.length}
+                filtered={filteredCreators.length}
+              />
+              <CreatorAppsTable apps={filteredCreators} />
+            </>
+          )}
         </>
       )}
     </PageShell>
@@ -490,58 +999,6 @@ function UsersTable({ users }: { users: AdminUser[] }) {
 }
 
 /* ─── Transactions ─── */
-function TxFilterBar({
-  txTypes, typeFilter, onTypeChange, riskFilter, onRiskChange, total, filtered,
-}: {
-  txTypes: string[];
-  typeFilter: string;
-  onTypeChange: (v: string) => void;
-  riskFilter: string;
-  onRiskChange: (v: string) => void;
-  total: number;
-  filtered: number;
-}) {
-  const selectStyle: React.CSSProperties = {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.15)",
-    color: "rgba(255,255,255,0.85)",
-    borderRadius: "0.5rem",
-    padding: "0.375rem 0.75rem",
-    fontSize: "0.75rem",
-    outline: "none",
-    cursor: "pointer",
-  };
-  const optionStyle: React.CSSProperties = {
-    backgroundColor: "#1a1a2e",
-    color: "rgba(255,255,255,0.85)",
-  };
-  return (
-    <div className="flex flex-wrap items-center gap-3 mb-4" data-testid="tx-filters">
-      <div className="flex items-center gap-2">
-        <span className="text-[0.62rem] uppercase tracking-widest text-white/40">Type</span>
-        <select value={typeFilter} onChange={(e) => onTypeChange(e.target.value)} style={selectStyle}>
-          <option value="all" style={optionStyle}>All</option>
-          {txTypes.map((t) => <option key={t} value={t} style={optionStyle}>{t}</option>)}
-        </select>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[0.62rem] uppercase tracking-widest text-white/40">Risk</span>
-        <select value={riskFilter} onChange={(e) => onRiskChange(e.target.value)} style={selectStyle}>
-          <option value="all" style={optionStyle}>All</option>
-          <option value="flagged" style={optionStyle}>Flagged</option>
-          <option value="high" style={optionStyle}>High (&#8805;70)</option>
-          <option value="medium" style={optionStyle}>Medium (30-69)</option>
-          <option value="low" style={optionStyle}>Low (&lt;30)</option>
-          <option value="none" style={optionStyle}>No Score</option>
-        </select>
-      </div>
-      {filtered !== total && (
-        <span className="text-[0.6rem] text-white/30 ml-2">{filtered} of {total}</span>
-      )}
-    </div>
-  );
-}
-
 function TxsTable({ txs }: { txs: AdminTx[] }) {
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
 
@@ -551,8 +1008,8 @@ function TxsTable({ txs }: { txs: AdminTx[] }) {
         <tr><td colSpan={6} className="p-8 text-center text-white/40">No transactions found</td></tr>
       ) : (
         txs.map((tx) => (
-          <>
-            <tr key={tx.rawId} style={rowStyle} className="hover:bg-white/[0.03] transition-colors">
+          <Fragment key={tx.rawId}>
+            <tr style={rowStyle} className="hover:bg-white/[0.03] transition-colors">
               <td className="px-4 py-3.5">
                 <div className="font-mono text-xs text-white/90">{tx.id}</div>
                 <div className="text-[0.6rem] text-white/35 font-mono">{tx.rawId}</div>
@@ -598,7 +1055,7 @@ function TxsTable({ txs }: { txs: AdminTx[] }) {
                 </td>
               </tr>
             )}
-          </>
+          </Fragment>
         ))
       )}
     </TableShell>
@@ -676,76 +1133,6 @@ function TokenIdCell({ tokenId }: { tokenId: number }) {
 }
 
 /* ─── Cards Filter Bar ─── */
-function CardsFilterBar({
-  cardStatuses, statusFilter, onStatusChange, rarityFilter, onRarityChange, search, onSearchChange, total, filtered,
-}: {
-  cardStatuses: string[];
-  statusFilter: string;
-  onStatusChange: (v: string) => void;
-  rarityFilter: string;
-  onRarityChange: (v: string) => void;
-  search: string;
-  onSearchChange: (v: string) => void;
-  total: number;
-  filtered: number;
-}) {
-  const selectStyle: React.CSSProperties = {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.15)",
-    color: "rgba(255,255,255,0.85)",
-    borderRadius: "0.5rem",
-    padding: "0.375rem 0.75rem",
-    fontSize: "0.75rem",
-    outline: "none",
-    cursor: "pointer",
-  };
-  const optionStyle: React.CSSProperties = {
-    backgroundColor: "#1a1a2e",
-    color: "rgba(255,255,255,0.85)",
-  };
-  return (
-    <div className="flex flex-wrap items-center gap-3 mb-4" data-testid="cards-filters">
-      <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search cardId, tokenId, template, owner…"
-          className="flex-1 bg-transparent text-sm text-white/85 placeholder:text-white/25 outline-none"
-          style={{
-            border: "1px solid rgba(255,255,255,0.15)",
-            borderRadius: "0.5rem",
-            padding: "0.375rem 0.75rem",
-            fontSize: "0.75rem",
-          }}
-          data-testid="cards-search"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[0.62rem] uppercase tracking-widest text-white/40">Status</span>
-        <select value={statusFilter} onChange={(e) => onStatusChange(e.target.value)} style={selectStyle}>
-          <option value="all" style={optionStyle}>All</option>
-          {cardStatuses.map((s) => <option key={s} value={s} style={optionStyle}>{s}</option>)}
-        </select>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[0.62rem] uppercase tracking-widest text-white/40">Rarity</span>
-        <select value={rarityFilter} onChange={(e) => onRarityChange(e.target.value)} style={selectStyle}>
-          <option value="all" style={optionStyle}>All</option>
-          <option value="0" style={optionStyle}>Common</option>
-          <option value="1" style={optionStyle}>Rare</option>
-          <option value="2" style={optionStyle}>Epic</option>
-          <option value="3" style={optionStyle}>Legendary</option>
-        </select>
-      </div>
-      {filtered !== total && (
-        <span className="text-[0.6rem] text-white/30 ml-2">{filtered} of {total}</span>
-      )}
-    </div>
-  );
-}
-
 function CardsTable({ cards }: { cards: AdminCard[] }) {
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
 
