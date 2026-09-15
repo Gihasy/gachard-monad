@@ -166,11 +166,9 @@ forge test
 ```
 
 ### Environment Variables
-Create `frontend/.env.local`. The full list, with notes on what each one does,
-is in [Deployment → Frontend (Vercel)](#frontend-vercel) below. The minimum to
-get a local instance running is `MONGODB_URL`, `DATABASE_NAME`, `RPC_URL`,
-`CHAIN_ID`, `CONTRACT_ADDRESS`, `ENTROPY_CONTRACT_ADDRESS`, `ADMIN_PRIVATE_KEY`
-and `ENCRYPTION_SECRET_KEY`.
+Copy [`frontend/.env.local.example`](frontend/.env.local.example) to
+`frontend/.env.local` and fill it in. Each variable is annotated there, and the
+deployment-specific notes are in [Deployment → Frontend (Vercel)](#frontend-vercel).
 
 ## Stack
 
@@ -206,8 +204,9 @@ and `ENCRYPTION_SECRET_KEY`.
 - **ADR-029**: Pyth Entropy for provably fair pack randomness
 - **ADR-030**: MiMo as the single AI provider
 
-The full ADR log (30 records) is kept in the private working repository. The two
-largest decisions are documented in full here, in this repository:
+The full ADR log is in [`DECISIONS.md`](DECISIONS.md) — 30 records covering every
+architectural decision, including the ones that were superseded and the known
+limitations of each. The two largest decisions also have dedicated specs:
 
 - [`docs/ENTROPY-INTEGRATION-SPEC.md`](docs/ENTROPY-INTEGRATION-SPEC.md) — the provably-fair
   pack randomness design: request/callback/fulfill flow, hash commitment, threat model
@@ -230,8 +229,8 @@ gachard-monad/
 │   └── script/        # Deploy scripts
 ├── docs/              # Documentation
 ├── scripts/           # Deployment scripts
-├── MEMORY.md          # Project status & rules (not published)
-├── DECISIONS.md       # Architecture decisions, 30 ADRs (not published)
+├── MEMORY.md          # Project status & working notes (not published)
+├── DECISIONS.md       # Architecture decisions — 30 ADRs
 ```
 
 ## Deployment
@@ -343,7 +342,7 @@ AI-powered visual card analysis is planned as a complementary verification layer
 **Current status:** Not implemented. No vision code exists yet. QR-based verification is the only method today. The AI that *is* live is text-based: trade risk scoring and marketplace insight, both via MiMo.
 
 ## Notes for AI Coding Agents
-- Read `MEMORY.md` and `DECISIONS.md` (private working repo) and `docs/` before making changes
+- Read `DECISIONS.md` and `docs/` before making changes (`MEMORY.md` is not published)
 - Do not use blockchain/crypto/on-chain terminology in user-facing UI
 - All changes must be compatible with locked ADRs
 - Test on mobile (iPhone 12 Pro/390px, Galaxy S8+/360px) before deploying
