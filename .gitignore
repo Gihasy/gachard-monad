@@ -45,7 +45,7 @@ test_reports/
 memory/
 LAPORAN_AKHIR.md
 MEMORY.md
-DECISIONS.md
+# DECISIONS.md is published deliberately — the ADR log is part of the submission.
 PRD-Gachard-Hackathon.md
 CLAUDE.md
 .gitconfig
@@ -78,3 +78,9 @@ sessions/
 # Media files
 *.mp4
 *.mov
+
+# Environment templates are safe to publish — placeholders only, no real values.
+# This negation must stay AFTER every .env rule above (.env.*, *.env, .env*)
+# or it will be overridden.
+!.env.local.example
+!frontend/.env.local.example

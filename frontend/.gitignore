@@ -42,3 +42,7 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Environment TEMPLATE is published deliberately — placeholders only, no real
+# values. Must stay after both .env* rules above or it will be overridden.
+!.env.local.example
