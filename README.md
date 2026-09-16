@@ -17,105 +17,170 @@ Monad's sub-second blocks make it viable to treat a pack opening as a synchronou
 
 ```mermaid
 flowchart TD
-    A[Login] -->|Google OAuth / Demo| B[Top Up Credits]
-    B --> C{Choose Pack}
-    C -->|Standard 500 CR| D[Standard Pack<br/>5 cards, 1 Rare+]
-    C -->|Booster 800 CR| E[Booster Pack<br/>10 cards, 2 Rare+]
-    D --> F[Pyth Entropy<br/>On-chain RNG]
+    A([Log in with Google]) --> B[Top up Credits]
+    B --> C{Choose a pack}
+    C -->|Standard · 500 CR| D[5 cards<br/>1 guaranteed Rare+]
+    C -->|Booster · 800 CR| E[10 cards<br/>2 guaranteed Rare+]
+    D --> F[[Provably fair reveal]]
     E --> F
-    F --> G[Pack Reveal]
-    G --> H[Collection]
-    H --> I{What Next?}
-    I -->|Trade| J[Marketplace<br/>Buy/Sell with Crystal]
-    I -->|Print| K[Physical Card<br/>Card locked in vault]
-    I -->|Dismantle| L[Burn for Crystal<br/>Non-purchasable currency]
-    K --> M[Ship & Claim]
-    M --> N[Redeem<br/>Physical → Digital]
-    N --> H
+    F --> G[(Your Collection)]
+    G --> H{What next?}
+    H -->|Trade| I[Marketplace<br/>buy and sell for Crystal]
+    H -->|Print| J[Physical card<br/>digital copy locks]
+    H -->|Dismantle| K[Burn for Crystal]
+    J --> L[Ship and claim]
+    L --> M[Redeem<br/>physical back to digital]
+    M --> G
+    I --> G
 
-    style A fill:#8B5CF6,stroke:#7C3AED,color:#fff
-    style F fill:#00CCFF,stroke:#0099CC,color:#000
-    style G fill:#FFC466,stroke:#FF9500,color:#000
-    style H fill:#00FF88,stroke:#00CC66,color:#000
-    style J fill:#FF6BBA,stroke:#CC3388,color:#fff
-    style K fill:#FF6BBA,stroke:#CC3388,color:#fff
-    style L fill:#B4ACFF,stroke:#8B7AFF,color:#000
+    classDef entry fill:#8B5CF6,stroke:#B8ACFF,color:#fff
+    classDef key fill:#00CCFF,stroke:#7DF9FF,color:#06121a
+    classDef own fill:#00FF88,stroke:#00CC66,color:#06210f
+    classDef act fill:#FF6BBA,stroke:#CC3388,color:#fff
+    classDef burn fill:#B8ACFF,stroke:#8B5CF6,color:#161029
+    class A entry
+    class F key
+    class G own
+    class I,J,M act
+    class K burn
 ```
 
 ### Technical Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Frontend["Frontend (Next.js 16)"]
-        Login[Google OAuth<br/>+ Demo]
-        Collect[Collect Page<br/>Pack Purchase]
-        Profile[Profile Page<br/>+ Privy Wallet]
-        Admin[Admin Panel<br/>Confirm All]
+    subgraph FE["Frontend · Next.js 16"]
+        direction TB
+        UiCollect["Collect<br/>buy and open packs"]
+        UiCollection["Collection<br/>print · dismantle"]
+        UiTrade["Trade<br/>marketplace"]
+        UiProfile["Profile<br/>optional Privy wallet"]
+        UiAdmin["Admin console"]
     end
 
-    subgraph Backend["Backend (API Routes)"]
-        Mint[/api/mint<br/>Request Entropy/]
-        Fulfill[/api/mint/fulfill<br/>Poll & Complete/]
-        Cards[/api/cards<br/>User Collection/]
+    subgraph BE["Backend · API Routes"]
+        direction TB
+        ApiMint["POST /api/mint<br/>request randomness"]
+        ApiFulfill["POST /api/mint/fulfill<br/>poll · fulfill · recover"]
+        ApiCards["GET /api/cards"]
+        ApiMarket["/api/marketplace"]
     end
 
-    subgraph Blockchain["Monad Testnet"]
-        Gachard[GachardCard<br/>ERC-1155]
-        Pack[PackEntropy<br/>Pyth Integration]
-        Pyth[Pyth Entropy<br/>On-chain RNG]
+    subgraph AI["AI · MiMo"]
+        direction TB
+        AiRisk["wash-trade risk score"]
+        AiInsight["market insight<br/>price suggestion"]
     end
 
-    subgraph Database["MongoDB Atlas"]
-        Users[(users)]
-        Cards[(cards)]
-        Txs[(transactions)]
-        Templates[(card_templates)]
+    subgraph CH["Monad Testnet"]
+        direction TB
+        ScPack["PackEntropy<br/>seed + commitment"]
+        ScCard["GachardCard<br/>ERC-1155"]
+        ScPyth["Pyth Entropy<br/>external RNG"]
     end
 
-    Login --> Mint
-    Collect --> Mint
-    Mint -->|requestPack| Pack
-    Pack -->|requestV2| Pyth
-    Pyth -->|entropyCallback| Pack
-    Fulfill -->|fulfillPack| Pack
-    Pack -->|mintBatch| Gachard
-    Fulfill --> Cards
-    Cards --> Txs
-    Admin -->|confirm-all| Fulfill
-    Profile -->|Privy SDK| Privy[Privy Embedded<br/>Optional Wallet]
+    subgraph DB["MongoDB Atlas"]
+        direction TB
+        DbTx[("transactions")]
+        DbCards[("cards")]
+        DbUsers[("users")]
+    end
 
-    style Frontend fill:#1a1a2e,stroke:#8B5CF6,color:#fff
-    style Backend fill:#1a1a2e,stroke:#00CCFF,color:#fff
-    style Blockchain fill:#1a1a2e,stroke:#00FF88,color:#fff
-    style Database fill:#1a1a2e,stroke:#FFC466,color:#fff
+    UiCollect --> ApiMint
+    UiCollect -. "poll every 2s" .-> ApiFulfill
+    UiCollection --> ApiCards
+    UiTrade --> ApiMarket
+    UiAdmin -. "confirm-all" .-> ApiFulfill
+    UiProfile --> DbUsers
+
+    ApiMint -- "requestPack" --> ScPack
+    ScPack -- "requestV2" --> ScPyth
+    ScPyth -. "entropyCallback<br/>writes seed" .-> ScPack
+    ApiFulfill -- "fulfillPack" --> ScPack
+    ScPack -- "mintBatch" --> ScCard
+
+    ApiMint --> DbTx
+    ApiFulfill --> DbCards
+    ApiCards --> DbCards
+    ApiMarket --> AiRisk
+    ApiMarket --> AiInsight
+    AiRisk -- "recordVerification" --> ScCard
+
+    style FE fill:#12152e,stroke:#8B5CF6,color:#fff
+    style BE fill:#12152e,stroke:#00CCFF,color:#fff
+    style AI fill:#12152e,stroke:#FF6BBA,color:#fff
+    style CH fill:#12152e,stroke:#00FF88,color:#fff
+    style DB fill:#12152e,stroke:#FFC466,color:#fff
+```
+
+### Pack Opening, Step by Step
+
+A pack is three separate transactions, and the randomness arrives from outside our
+system in the middle of them. This is what makes the result checkable by anyone.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Collector
+    participant App as Gachard app
+    participant API as Backend
+    participant PE as PackEntropy
+    participant Pyth as Pyth Entropy
+    participant GC as GachardCard
+
+    U->>App: Buy a pack
+    App->>API: POST /api/mint
+    API->>PE: requestPack()
+    PE->>Pyth: requestV2()
+    API-->>App: sequenceNumber (pack pending)
+
+    Note over Pyth,PE: Randomness is produced outside our system
+
+    Pyth-->>PE: entropyCallback() writes seed on-chain
+
+    loop every 2s until the seed lands
+        App->>API: POST /api/mint/fulfill
+        API->>PE: getSeed()
+    end
+
+    API->>API: derive rarities from the seed
+    API->>PE: fulfillPack(rarities)
+    PE->>PE: store keccak256(seed, rarities)
+    PE->>GC: mintBatch()
+    API-->>App: cards revealed
+
+    Note over U,GC: Anyone can re-derive the result from the on-chain seed<br/>and check it against the stored commitment
 ```
 
 ### Card Lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Digital: Pack Opened
-    Digital --> Vaulted: Print Request
-    Vaulted --> Digital: Redeem
-    Digital --> Burned: Dismantle
-    Digital --> Listed: Marketplace
-    Listed --> Digital: Cancel Listing
-    Listed --> Sold: Buyer Purchases
-    Sold --> Digital: New Owner
+    direction LR
+    [*] --> Digital: pack opened
 
-    note right of Digital
-        Default state
-        Can trade, print, dismantle
-    end note
+    state "Vaulted (physical exists)" as Vaulted {
+        [*] --> Locked
+        Locked --> Printing
+        Printing --> Shipping
+        Shipping --> Real: owner claims via QR
+    }
+
+    Digital --> Listed: list on marketplace
+    Listed --> Digital: cancel, or sold to new owner
+    Digital --> Vaulted: request print
+    Vaulted --> Digital: redeem code destroys the physical
+    Digital --> Burned: dismantle
+    Burned --> [*]
 
     note right of Vaulted
-        Locked in contract
-        Transfers blocked
+        Transfers blocked on-chain
+        Same token ID throughout
     end note
 
     note right of Burned
         Permanent on-chain burn
-        Earns Crystal currency
+        Pays out Crystal
     end note
 ```
 
@@ -133,11 +198,11 @@ stateDiagram-v2
 - **Transaction History** — Full transaction history in Profile page
 - **Unique Card ID** — Each card has a unique hex ID (e.g. `#8a866`)
 - **Invoice ID** — Each transaction has an Invoice ID (e.g. `GC-20260730-a3f1`)
-- **Admin Console** — Manage users, transactions, cards, print requests, monitor MON balances
+- **Admin Console** — Manage users, transactions, cards, print requests, monitor MON balances. Every tab has search, filters and sorting matched to what that tab is for
 - **Trade Marketplace** — Buy/sell cards between users with FVM pricing
 - **Dismantle & Crystal** — Burn cards to earn Crystal currency
 - **AI Anomaly Detection** — Wash-trading detection on marketplace
-- **Support Gachard** — Floating CTA button for early supporters
+- **Support Gachard** — Floating CTA for early supporters, shown on the homepage only
 - **Pyth Entropy** — Provably fair pack randomness with on-chain verifiable RNG
 - **Privy Embedded Wallet** — Optional self-custody wallet for advanced users (For Advanced Users section)
 
