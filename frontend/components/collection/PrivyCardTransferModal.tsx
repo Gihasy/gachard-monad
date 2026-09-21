@@ -17,8 +17,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   PrivyProvider,
-  useDelegatedActions,
   usePrivy,
+  useSigners,
   useSignTypedData,
   useWallets,
 } from "@privy-io/react-auth";
@@ -48,6 +48,11 @@ type Phase =
   | "done"
   | "error";
 
+// Key quorum that represents Gachard's backend. The user grants it signing
+// rights on their wallet once; the server then acts through it. Public
+// identifier, not a secret: the private half lives only on the server.
+const SIGNER_ID = process.env.NEXT_PUBLIC_PRIVY_SIGNER_ID ?? "";
+
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 20;
 
@@ -67,11 +72,10 @@ function Content({
   const { ready, authenticated, login, user } = usePrivy();
   const { wallets } = useWallets();
   const { signTypedData } = useSignTypedData();
-  // v1.93.0 ships this hook with an empty interface, but the implementation is
-  // there (see the evaluation, 1.4). Cast rather than upgrade the SDK.
-  const { delegateWallet } = useDelegatedActions() as unknown as {
-    delegateWallet: (args: { address: string; chainType: "ethereum" }) => Promise<void>;
-  };
+  // v3's current API. 1.93.0's delegateWallet targeted the retired
+  // delegated-actions flow, which this app's wallet mode
+  // (user-controlled-server-wallets-only) never answers, so it hung forever.
+  const { addSigners } = useSigners();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -94,6 +98,11 @@ function Content({
 
   const runDelegate = useCallback(async () => {
     if (!walletAddress) return;
+    if (!SIGNER_ID) {
+      setPhase("error");
+      setMessage("Wallet delegation is not configured yet.");
+      return;
+    }
     try {
       setPhase("delegating");
       setMessage(null);
@@ -102,7 +111,7 @@ function Content({
       // opens the promise neither resolves nor rejects. Without a deadline the
       // user is left on a spinner with no way forward and no explanation.
       await Promise.race([
-        delegateWallet({ address: walletAddress, chainType: "ethereum" }),
+        addSigners({ address: walletAddress, signers: [{ signerId: SIGNER_ID }] }),
         new Promise((_, reject) =>
           setTimeout(
             () => reject(new Error("Privy did not respond. This app may not have wallet delegation enabled yet.")),
@@ -116,7 +125,7 @@ function Content({
       setPhase("error");
       setMessage(e instanceof Error ? e.message : "Could not set up your wallet.");
     }
-  }, [walletAddress, delegateWallet]);
+  }, [walletAddress, addSigners]);
 
   const poll = useCallback(async (cardId: string) => {
     for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
