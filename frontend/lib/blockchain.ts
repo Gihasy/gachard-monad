@@ -11,6 +11,22 @@ const RETRY_DELAY_MS = 1000;
 let currentNonce: number | null = null;
 let nonceLock = false;
 
+/**
+ * Drop the cached nonce so the next acquireNonce() re-reads it from chain.
+ *
+ * The cache lives in module state, so it goes stale whenever another process
+ * sends from the admin wallet: a maintenance script, or a second serverless
+ * instance with its own copy. The symptom is NONCE_EXPIRED / "nonce too low".
+ *
+ * Callers invalidate rather than retry. A retry would be unsafe here because
+ * the Monad RPC also reports errors for transactions that actually landed
+ * (ADR-031), so resending can double-execute. Invalidate, fail the request,
+ * and let the caller decide to try again.
+ */
+export function resetNonceCache(): void {
+  currentNonce = null;
+}
+
 async function acquireNonce(provider: ethers.JsonRpcProvider, address: string): Promise<number> {
   // Wait for lock to release
   while (nonceLock) {

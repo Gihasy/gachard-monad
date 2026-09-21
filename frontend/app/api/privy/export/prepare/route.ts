@@ -14,7 +14,7 @@
 import { NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
-import { marketplaceTransfer } from "@/lib/blockchain";
+import { marketplaceTransfer, resetNonceCache } from "@/lib/blockchain";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isSponsorshipConfigured, resolveWalletId } from "@/lib/privy-server";
 import { recoverExportIntentSigner, type ExportIntent } from "@/lib/export-intent";
@@ -146,11 +146,31 @@ export async function POST(request: Request) {
       }
     }
 
-    const txHash = await marketplaceTransfer(
-      intent.tokenId,
-      user.walletAddress,
-      intent.to
-    );
+    // The nonce above is already spent at this point. That is deliberate: if
+    // this transfer fails ambiguously, the card may still have moved, so
+    // releasing the signature for reuse could export it twice. The user signs
+    // again instead, which costs one modal and cannot double-spend.
+    let txHash: string;
+    try {
+      txHash = await marketplaceTransfer(intent.tokenId, user.walletAddress, intent.to);
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === "NONCE_EXPIRED" || code === "REPLACEMENT_UNDERPRICED") {
+        // Another process sent from the admin wallet and our cached nonce is
+        // behind. Invalidate so the next attempt re-reads it, but do not retry
+        // here: this transfer may have landed despite the error.
+        resetNonceCache();
+        console.warn(`[privy/export/prepare] nonce conflict for token ${intent.tokenId}, cache reset`);
+        return NextResponse.json(
+          {
+            error: "The network was busy. Please try exporting again.",
+            code: "transient",
+          },
+          { status: 503 }
+        );
+      }
+      throw err;
+    }
 
     const txCollection = await getCollection("transactions");
     const tx = await txCollection.insertOne({
