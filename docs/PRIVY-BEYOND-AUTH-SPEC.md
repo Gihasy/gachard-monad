@@ -1,6 +1,6 @@
 # Technical Spec — Card Export & Import via Privy
 
-## Status: SPEC (siap dibangun, belum ada kode)
+## Status: SPEC SIAP DIBANGUN, semua prasyarat teknis lolos (belum ada kode)
 
 *Dibuat: 21 September 2026*
 *Keputusan: ADR-031. Evaluasi dan bukti: `docs/PRIVY-BEYOND-AUTH-EVALUATION.md`*
@@ -252,7 +252,35 @@ Batas harian tidak ada di `checkRateLimit()` sekarang; perlu penambahan kecil de
 ### 6.1 Wajib sebelum apa pun dibangun
 
 1. ~~Cek `recordVerification()` apakah `onlyOwner`.~~ **Selesai 21 September 2026: ya, `onlyOwner` (`GachardCard.sol:176`).** Transaksi klaim memakai self-transfer bernilai nol. Lihat 2.4.
-2. **Uji `safeTransferFrom` ke wallet yang sudah terdelegasi 7702.** Sudah dicek lewat `eth_call` dan mengembalikan `0xf23a6e61`, tapi lakukan sekali dengan transfer sungguhan. Ini satu-satunya prasyarat yang tersisa.
+2. ~~Uji `safeTransferFrom` ke wallet yang sudah terdelegasi 7702.~~ **Selesai 21 September 2026 dengan transfer sungguhan, bukan `eth_call`. Lihat 6.1.1 di bawah.**
+
+**Tidak ada prasyarat tersisa. Implementasi bisa dimulai.**
+
+#### 6.1.1 Hasil uji transfer sungguhan
+
+Token uji dicetak ke admin, dipindahkan ke wallet probe yang sudah terdelegasi, dikembalikan lewat transaksi sponsored, lalu dibakar. Tidak ada token yang tertinggal.
+
+| Langkah | Hasil |
+|---|---|
+| Mint token uji ke admin | Sukses |
+| **`safeTransferFrom` admin ke wallet terdelegasi 7702** | **DITERIMA**, gas 120.511, tx `0x021156c9...980a` |
+| Import sponsored: `safeTransferFrom` probe ke admin | **Sukses**, block 64496430, tx `0x7aaff4ac...59ee` |
+| Saldo MON wallet probe setelah import | **0.0** |
+| Cleanup, burn token uji | Sukses, admin dan probe sama-sama nol |
+
+Dua hal yang dibuktikan sekaligus. Pertama, ERC-1155 acceptance check memang lolos di transaksi nyata, bukan cuma di `eth_call`. Kedua, **seluruh mekanika alur import Bagian 3 sudah berjalan end-to-end sebelum satu baris kode aplikasi ditulis**: wallet user menandatangani transfer ERC-1155 miliknya sendiri, Privy membayar gasnya, dan kartu sampai kembali ke custodial wallet.
+
+Respons pertama tetap mengembalikan `hash: ""`, dan hash asli baru muncul di polling kedua (`broadcasted` lalu `confirmed`). Pola polling di 4.3 terkonfirmasi wajib.
+
+#### 6.1.2 Peringatan: "could not coalesce error" pada RPC Monad
+
+Muncul tiga kali selama pengujian. **Transaksinya benar-benar berhasil setiap kali**; yang gagal hanya parsing respons di sisi client. Terbukti saat percobaan burn kedua menjawab `"Owner does not hold card"`, yaitu karena burn pertama yang "gagal" itu sebenarnya sudah mengeksekusi.
+
+Ini berbahaya untuk logika retry. **Retry buta pada operasi tulis akan mengeksekusi transaksi dua kali.**
+
+Sudah diperiksa: kode yang ada **aman**. `withRetry()` di `lib/blockchain.ts:59` hanya membungkus operasi baca; `mintCard`, `mintBatch`, dan operasi tulis lain tidak memakainya. Jadi ini bukan bug yang sudah ada, melainkan jebakan untuk kode baru.
+
+Aturan untuk semua route Privy: **jangan pernah membungkus panggilan tulis dengan retry otomatis.** Kalau sebuah tulisan gagal dengan error yang tidak jelas, periksa state on-chain lebih dulu (`balanceOf`, atau `transactions().get()` untuk jalur sponsored) sebelum memutuskan mengulang.
 
 ### 6.2 Alur utama
 
