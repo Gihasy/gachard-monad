@@ -228,8 +228,44 @@ Konsekuensi yang harus diterima: sumber kebenaran "kartu ini sedang di luar" ada
 | Konsistensi state export/import | **Sedang** | Transfer bisa mendarat sementara update MongoDB gagal. Rekonsiliasi wajib, tapi polanya sudah ada dan sudah terbukti di `4658e4e`. |
 | `/collection` dan fitur turunannya | **Sedang** | Satu-satunya tempat yang benar-benar menyentuh permukaan yang sudah stabil. |
 | Bug typing `useDelegatedActions` | **Rendah** | Hanya kalau jalur session signer dipakai. Sudah diketahui di muka. |
+| Biaya dan penyalahgunaan sponsorship | **Sedang**, dan **Tinggi** kalau jalur client yang dipakai | Lihat 5.4. Tidak ada di draf pertama dokumen ini. |
 
 Effort kasar, dengan asumsi verifikasi hari pertama lolos: satu hari untuk verifikasi dashboard dan proof-of-concept sponsorship terisolasi, dua sampai tiga hari untuk export dan import end-to-end, satu hari untuk rekonsiliasi dan penyesuaian `/collection`, satu hari untuk pengujian dan rekaman demo. Belum termasuk buffer untuk kejutan, yang pada proyek ini secara historis selalu terpakai.
+
+### 5.4 Cakupan sponsorship, biaya, dan penyalahgunaan
+
+Bagian ini tidak ada di draf pertama dan seharusnya ada sejak awal. Pertanyaannya sederhana: kalau Privy membayar gas, **apa batasnya?**
+
+#### Privy tidak membatasi per kontrak
+
+Cakupan sponsorship di sisi Privy adalah **per-app dan per-chain, dengan opt-in per transaksi**. Sponsorship menyala kalau ada flag `sponsor: true` pada request, di chain yang diaktifkan di dashboard, untuk wallet milik app kita.
+
+Yang **tidak** disediakan Privy: pembatasan berdasarkan alamat kontrak tujuan. Privy tidak tahu apa itu `GachardCard` dan tidak akan menolak transaksi hanya karena tujuannya kontrak lain. Kalau flag itu ada, Privy membayar.
+
+Jadi jawaban atas "apakah sponsorship hanya berlaku untuk ekosistem Gachard" adalah **ya, tapi bukan karena Privy yang membatasinya.** Yang membatasi adalah backend kita, karena hanya backend kita yang menentukan transaksi mana yang dikirim dengan flag itu.
+
+#### Ini alasan kedua memilih jalur server
+
+Konsekuensinya lebih tajam daripada sekadar soal biaya, dan memperkuat rekomendasi di Bagian 6 lewat jalan yang sama sekali berbeda dari argumen Turbopack:
+
+- **Jalur server (rekomendasi):** transaksi sponsored disusun dan dikirim backend. User tidak pernah memegang flag `sponsor`. Mereka tidak bisa meminta sponsorship untuk transaksi sembarangan karena tidak punya cara menyusunnya. Permukaan serangannya adalah endpoint kita sendiri, yang memang sudah kita kendalikan.
+- **Jalur client (v3, `sendTransaction(..., {sponsor: true})`):** flag itu berada di kode yang berjalan di browser user, dan kode browser bisa dimodifikasi. Siapa pun yang mau repot bisa mengirim transaksi apa pun, ke kontrak apa pun, dengan gas dibayar saldo sponsorship kita.
+
+Dengan kata lain, upgrade ke v3 bukan hanya berisiko secara bundler, ia juga memindahkan kontrol pengeluaran ke tempat yang tidak bisa kita percayai.
+
+#### Wallet-nya memang tidak bisa dipakai di luar Gachard
+
+Embedded wallet terikat pada app ID kita, dan di v1.93.0 tidak ada export private key (ADR-028). User tidak bisa membawanya ke MetaMask atau dApp lain. Hari ini, satu-satunya cara wallet itu bertransaksi adalah lewat Gachard.
+
+Kalau suatu saat wallet itu bisa dipakai di tempat lain, prinsip tagihannya tetap sama: **yang membayar adalah app yang mengirim transaksi dengan `sponsor: true`.** App lain memakai saldo mereka sendiri. User yang mengirim langsung ke RPC tanpa lewat Privy membayar sendiri dengan MON miliknya.
+
+#### Kontrol pengeluaran adalah tanggung jawab kita
+
+Privy hanya menyediakan batas pengeluaran global. Kontrol yang lebih halus, per wallet, per user, atau per rentang waktu, harus dibangun aplikasi sebelum memanggil API Privy.
+
+Untuk Gachard ini bukan soal teoretis. **Setiap import adalah satu transaksi sponsored**, dan tidak ada yang mencegah satu user melakukan export lalu import berulang-ulang sampai saldo habis. Polanya sudah ada di proyek ini dan tinggal dipakai ulang: rate-limiting berbasis MongoDB seperti ADR-019 untuk redeem.
+
+Untuk demo hackathon, batas global di dashboard sudah cukup dan tidak perlu dibesar-besarkan. Untuk sesuatu yang dibuka ke publik, tidak cukup. Ini harus masuk ADR-031 sebagai syarat, bukan sebagai catatan kaki.
 
 ---
 
@@ -249,6 +285,10 @@ Alasan utamanya bukan bounty. Alasannya adalah bahwa flow export/import ini akhi
 | Status "Exported" | MongoDB | Preseden ADR-026. |
 
 Jalur server untuk sponsorship menuntut wallet user punya session signer, yang berarti user memberi izin sekali lewat `useDelegatedActions` (ada di v1.93.0, dengan catatan typing di 1.4). Ini menambah satu fitur Privy lagi ke daftar bonus, tapi jangan dipakai hanya demi menambah hitungan: ia dipilih karena memang satu-satunya cara mendapat sponsorship tanpa menyentuh v3, dan alasan itulah yang dibawa ke demo.
+
+Ada alasan kedua yang berdiri sendiri, dan menurut saya sama kuatnya: **flag `sponsor` tidak boleh berada di kode yang dijalankan browser user.** Kalau flag itu ada di client, saldo sponsorship kita bisa dipakai untuk transaksi apa pun ke kontrak mana pun oleh siapa pun yang mau memodifikasi kode halaman. Jalur server menutup itu secara struktural. Uraiannya di 5.4.
+
+Artinya rekomendasi ini tetap berdiri seandainya masalah Turbopack besok hilang sekalipun.
 
 Kompromi yang harus disadari: kalau transaksi klaim dieksekusi server, user tidak melihat modal. Karena itu **modal signing di langkah export (Bagian 2 langkah 2) menjadi wajib, bukan opsional**, itulah yang memberi bukti visual bahwa Privy bekerja. Kombinasinya: user menandatangani secara kasatmata di client, server mengeksekusi dengan gas yang dibayar Privy.
 
@@ -314,7 +354,7 @@ Fallback paling minimal yang disebut di dokumen tugas, yaitu sign-a-message tanp
 
 1. ~~Baca ulang teks bounty resmi dari dashboard hackathon dan lampirkan di sini.~~ **Selesai 21 September 2026**, lihat bagian "Teks Bounty Resmi" di atas.
 2. Jalankan tiga gerbang keputusan di atas dan catat hasilnya. Ini sekarang jadi item terbuka pertama, dan harus tuntas sebelum 2 Oktober agar sisa waktu dipakai membangun, bukan memverifikasi.
-3. Tulis ADR-031 setelah gerbang lolos, mencakup: status "Exported" hanya di MongoDB dan konsekuensinya, pembagian tugas signing antara client dan server, serta keputusan tidak mengubah smart contract.
+3. Tulis ADR-031 setelah gerbang lolos, mencakup: status "Exported" hanya di MongoDB dan konsekuensinya, pembagian tugas signing antara client dan server, keputusan tidak mengubah smart contract, serta **batas pengeluaran sponsorship per user dan alasan flag `sponsor` tidak pernah ditaruh di client** (5.4).
 4. Perbarui ADR-028 dengan penunjuk ke ADR-031, karena scope Privy berubah dari view-only menjadi transaksional.
 
 ---
@@ -327,6 +367,7 @@ Verifikasi lokal dilakukan atas `node_modules/@privy-io/react-auth` versi 1.93.0
 
 - [Gas sponsorship overview, Privy Docs](https://docs.privy.io/wallets/gas-and-asset-management/gas/overview)
 - [Setting up gas sponsorship, Privy Docs](https://docs.privy.io/wallets/gas-and-asset-management/gas/setup)
+- [Custom gas sponsorship rate limits, Privy Docs](https://docs.privy.io/recipes/gas-sponsorship-rate-limits)
 - [Send an Ethereum transaction, Privy Docs](https://docs.privy.io/wallets/using-wallets/ethereum/send-a-transaction)
 - [eth_sendTransaction REST API, Privy Docs](https://docs.privy.io/api-reference/wallets/ethereum/eth-send-transaction)
 - [Enabling users or servers to execute transactions, Privy Docs](https://docs.privy.io/recipes/wallets/user-and-server-signers)
