@@ -1,6 +1,6 @@
 # Evaluasi Pivot Privy — Memenuhi Syarat Bounty "Beyond Authentication"
 
-## Status: EVALUASI (belum implementasi, belum ada ADR)
+## Status: EVALUASI SELESAI, ketiga gerbang teknis LOLOS (belum implementasi, belum ada ADR)
 
 *Dibuat: 21 September 2026*
 *Deadline bounty: 14 Oktober 2026, 10:59 GMT+7 (23 hari lagi). Submission dibuka 2 Oktober.*
@@ -19,6 +19,8 @@ Tiga temuan dari verifikasi teknis membalik asumsi awal dokumen tugas ini:
 3. **Perubahan smart contract TIDAK diperlukan.** Premis "kontrak berubah" di dokumen tugas tidak terbukti setelah membaca `GachardCard.sol`. Baik export maupun import dua arah bisa dijalankan dengan fungsi yang sudah ada dan sudah teruji 78/78.
 
 **Rekomendasi:** lanjutkan pivot, tetapi dengan arsitektur hybrid (signing di client v1.93.0 + sponsorship di server) alih-alih upgrade SDK. Detail di Bagian 6.
+
+**Ketiga gerbang keputusan sudah dijalankan pada 21 September 2026 dan semuanya lolos**, termasuk satu transaksi sponsored sungguhan di Monad Testnet yang dibayar Privy sementara saldo wallet tetap nol. Tidak ada blocker teknis tersisa. Tiga temuan dari pengujian itu mengubah desain dan dirinci di gerbang 2: sponsorship bersifat asinkron, jalurnya EIP-7702 plus ERC-4337, dan akun yang sudah terdelegasi punya code sehingga menyentuh ERC-1155 acceptance check.
 
 ---
 
@@ -58,10 +60,12 @@ Halaman `docs.privy.io/wallets/gas-and-asset-management/gas/overview` mendaftar 
 
 Dua detail tambahan yang penting:
 
-- Sponsorship ini berlaku untuk **embedded EOA**, bukan hanya smart account. Dokumentasi menyatakan sponsorship dilakukan "without creating a separate contract account". Artinya tidak perlu ERC-4337, tidak perlu bundler, tidak perlu deploy smart account per user.
+- Sponsorship ini berlaku untuk **embedded EOA**, bukan hanya smart account. Dokumentasi menyatakan sponsorship dilakukan "without creating a separate contract account".
+
+  **Dikoreksi oleh gerbang 2.** Kalimat dokumentasi itu benar hanya dalam arti bahwa **alamatnya tidak berubah**. Di baliknya, sponsorship tetap berjalan di atas ERC-4337 dengan bundler Alchemy, dan EOA user didelegasikan lewat EIP-7702 sehingga akun itu punya code setelah transaksi sponsored pertamanya. Jadi "tidak perlu deploy smart account per user" tidak akurat; yang benar adalah tidak ada alamat kedua. Konsekuensinya menyentuh ERC-1155 acceptance check, diuraikan di gerbang 2 Bagian 6.
 - Mode **User pays** TIDAK mendukung Monad. Hanya Ethereum, Base, Tempo, Optimism, Arbitrum, Polygon dan testnet-nya. Untuk kasus Gachard ini tidak relevan karena kita memang mau app-pays, tapi perlu dicatat agar tidak salah pilih mode di dashboard.
 
-**Konsekuensi operasional:** sponsorship diaktifkan lewat toggle "Sponsor gas fees" di Privy Dashboard, lalu memilih chain di bagian "Supported chains". Untuk mainnet dibutuhkan payment method tersimpan. Untuk testnet dokumentasi tidak menyebut syarat pembayaran, **tapi ini harus dikonfirmasi langsung di dashboard sebelum flow dirancang bergantung padanya.** Ini satu-satunya ketidakpastian yang tersisa di Bagian 1, dan biaya untuk mengeceknya nol.
+**Konsekuensi operasional:** sponsorship diaktifkan lewat toggle "Sponsor gas fees" di Privy Dashboard, lalu memilih chain di bagian "Supported chains". Untuk mainnet dibutuhkan payment method tersimpan. Untuk testnet dokumentasi tidak menyebut syarat pembayaran. **Sudah dikonfirmasi lewat gerbang 1 dan 2 pada 21 September 2026: Monad Testnet bisa diaktifkan dan transaksi sponsored berjalan, tanpa payment method tersimpan.** Ketidakpastian terakhir di Bagian 1 tertutup.
 
 ### 1.2 Apakah signing tersedia di v1.93.0?
 
@@ -314,21 +318,78 @@ Sebelum satu baris kode fitur ditulis, tiga hal ini harus dijawab dengan percoba
 
 | # | Gerbang | Status | Tanggal |
 |---|---|---|---|
-| 1 | Fee Sponsorship aktif untuk Monad Testnet di dashboard | **TERBLOKIR**, perlu tindakan user | 21 Sep 2026 |
-| 2 | Satu transaksi sponsored lewat REST API | **TERBLOKIR**, bergantung pada gerbang 1 | 21 Sep 2026 |
+| 1 | Fee Sponsorship aktif untuk Monad Testnet di dashboard | **LOLOS** | 21 Sep 2026 |
+| 2 | Satu transaksi sponsored lewat REST API | **LOLOS** | 21 Sep 2026 |
 | 3 | SDK server tidak merusak build | **LOLOS** | 21 Sep 2026 |
 
-#### Gerbang 1, terblokir: perlu login dashboard
+**Ketiganya lolos. Tidak ada blocker tersisa. Lanjutkan ke spec teknis dan ADR-031.**
 
-**Aktifkan Fee Sponsorship di Privy Dashboard, pilih Monad Testnet.** Apakah testnet bisa diaktifkan tanpa payment method? Ini pertanyaan terbuka terakhir dari Bagian 1.
+#### Gerbang 1, LOLOS
 
-Hanya bisa dikerjakan pemilik akun Privy. Sekalian saat membuka dashboard, **buat App Secret** dan simpan sebagai `PRIVY_APP_SECRET` di `.env.local`. Sekarang yang ada hanya `NEXT_PUBLIC_PRIVY_APP_ID`, dan tanpa secret gerbang 2 tidak bisa dijalankan sama sekali.
+Dikerjakan pemilik akun di Privy Dashboard: Fee Sponsorship diaktifkan, Monad Testnet dipilih di Supported chains, dan App Secret dibuat lalu disimpan sebagai `PRIVY_APP_SECRET` di `.env.local` (file itu sudah ter-cover `.gitignore` dan tidak pernah ter-commit).
 
-#### Gerbang 2, terblokir: menunggu gerbang 1
+Pertanyaan terbuka dari Bagian 1, apakah testnet perlu payment method tersimpan, terjawab secara tidak langsung oleh gerbang 2: transaksi sponsored diterima dan dieksekusi, jadi syarat itu tidak berlaku untuk testnet.
 
-**Kirim satu transaksi sponsored dari wallet uji lewat REST API.** Kalau berhasil, saldo wallet tetap nol dan transaksi tetap masuk. Ini membuktikan atau menggugurkan seluruh Bagian 3 sekaligus.
+Temuan sampingan yang berharga di halaman yang sama: sakelar "Allow transactions from the client", lihat 5.4.
 
-Bentuk panggilannya sudah terverifikasi dari typing SDK (lihat gerbang 3), jadi yang tersisa murni soal kredensial dan konfigurasi dashboard.
+#### Gerbang 2, LOLOS
+
+Skrip sekali pakai di luar repo: buat wallet baru, kirim self-transfer bernilai nol dengan `sponsor: true` di `eip155:10143`, lalu periksa hasilnya di chain lewat RPC Monad kita sendiri, bukan lewat laporan Privy.
+
+Hasilnya:
+
+| Yang diukur | Hasil |
+|---|---|
+| Wallet uji | `0x85879D67248d8806972d0561689a6E24E974594c` |
+| Saldo sebelum | 0.0 MON |
+| Transaksi | `0xc953553c...b50c`, block 64494516, **status success** |
+| Gas terpakai | 248.734 |
+| `tx.from` di chain | `0x90080ae4F0d34671f9d160Fa33b469f134bBB3b1` |
+| **Saldo sesudah** | **0.0 MON** |
+
+**Ini buktinya.** Transaksi mendarat dan sukses, sementara wallet yang mengirimnya tidak pernah memegang satu wei pun. Pembayarnya adalah alamat pihak ketiga, bukan wallet user dan bukan admin wallet Gachard. Inilah bukti visual satu detik yang dijanjikan tabel demo di Bagian 4, dan sekarang sudah terbukti bisa diproduksi.
+
+Tiga hal yang ditemukan dan **mengubah desain**, semuanya tidak terlihat dari dokumentasi mana pun:
+
+**(a) Sponsorship bersifat asinkron.** Panggilan `rpc()` tidak mengembalikan transaction hash. Yang dikembalikan:
+
+```json
+{ "hash": "", "caip2": "eip155:10143",
+  "user_operation_hash": "0x39ffafeb...869d",
+  "sponsorship_provider": "alchemy",
+  "transaction_id": "84e7a83b-9eab-455a-8a80-d30008b84217" }
+```
+
+Field `hash` **kosong** saat respons diterima. Hash sesungguhnya baru muncul setelah di-poll lewat `client.transactions().get(transaction_id)`, yang pada percobaan ini sudah `confirmed` di polling pertama.
+
+Konsekuensinya langsung: kode yang mengasumsikan `rpc()` mengembalikan hash akan menyimpan string kosong ke MongoDB dan gagal diam-diam. Ini pola kegagalan yang persis sama dengan bug `tokenId: null` di commit `4658e4e`. **Flow export/import wajib memakai `transaction_id` sebagai sumber kebenaran dan melakukan polling**, bukan menunggu hash dari panggilan pertama.
+
+**(b) Jalurnya ERC-4337 lewat EIP-7702, bukan transaksi EOA biasa.** `sponsorship_provider` adalah `alchemy` dan yang dikembalikan adalah `user_operation_hash`. Setelah transaksi pertama, `eth_getCode` pada alamat wallet tidak lagi kosong:
+
+```
+0xef0100d6cedde84be40893d153be9d467cd6ad37875b28
+```
+
+Prefiks `0xef0100` adalah penanda delegasi EIP-7702, menunjuk implementasi di `0xd6cedde8...5b28`.
+
+Klaim Bagian 1.1 bahwa sponsorship bekerja "without creating a separate contract account" tetap benar dalam arti yang penting bagi kita: **alamatnya tidak berubah.** Kartu tetap dikirim ke alamat yang sama yang dilihat user. Tapi akun itu sekarang punya code, dan itu tidak netral.
+
+**(c) Akun ber-code memicu ERC-1155 acceptance check, dan ini nyaris jadi blocker.** `safeTransferFrom` pada ERC-1155 memeriksa `to.code.length > 0`; kalau ada code, penerima wajib mengimplementasi `onERC1155Received` dan mengembalikan magic value, atau transfer **revert**.
+
+Diuji langsung dengan `eth_call` ke wallet yang sudah terdelegasi:
+
+```
+onERC1155Received(...) -> 0xf23a6e61   = magic value, diterima
+```
+
+Implementasi delegasi Privy mengimplementasikannya, jadi **tidak ada blocker.** Tapi ini lolos karena kebetulan implementasi pihak ketiga berperilaku benar, bukan karena desain kita aman. Dua catatan yang harus masuk ADR-031:
+
+- Kalau Privy mengganti implementasi delegasi dengan yang tidak mengimplementasi `onERC1155Received`, transfer masuk ke wallet user akan revert. Di luar kendali kita, jadi perlu satu tes integrasi yang menangkapnya.
+- **Untungnya jalur export kita kebal terhadap ini.** `marketplaceTransfer` memanggil `_update()` secara langsung, bukan `_safeTransferFrom()`, dan `_update()` tidak menjalankan acceptance check sama sekali. Jadi export tetap jalan bahkan seandainya delegasi Privy berubah. Ini keberuntungan dari desain lama, bukan antisipasi, dan sebaiknya diperlakukan sebagai properti yang dijaga sengaja mulai sekarang.
+
+Sisa dari percobaan: satu wallet uji bernama `gate2-sponsorship-probe` di akun Privy. Tidak dipakai apa-apa, biarkan atau bersihkan lewat dashboard.
+
+Satu catatan operasional: `wallets().list()` mengembalikan HTTP 500 saat dicoba. Tidak menghalangi apa pun karena kita selalu menyimpan wallet id sendiri di MongoDB, tapi jangan bergantung padanya.
 
 #### Gerbang 3, LOLOS
 
@@ -354,7 +415,7 @@ Dua catatan metodologis, karena keduanya nyaris meloloskan kesimpulan yang salah
 
 Probe sudah dihapus setelah selesai. Yang tersisa di branch hanya perubahan `package.json` dan `package-lock.json`.
 
-Kalau gerbang 1 dan 2 juga lolos, lanjutkan penuh dan tulis spec teknis.
+Ketiga gerbang lolos pada hari yang sama. Rekomendasi di bagian ini tidak lagi bersyarat: lanjutkan penuh dan tulis spec teknis.
 
 ### Fallback kalau gerbang 1 atau 2 gagal
 
