@@ -334,7 +334,7 @@ export default function PrivyCardTransferModal(props: {
             defaultChain: monadTestnet,
             supportedChains: [monadTestnet],
             loginMethods: ["google", "email"],
-            embeddedWallets: { createOnLogin: "users-without-wallets" },
+            embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
           }}
         >
           <Content {...props} />
