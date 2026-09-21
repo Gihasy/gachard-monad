@@ -97,7 +97,19 @@ function Content({
     try {
       setPhase("delegating");
       setMessage(null);
-      await delegateWallet({ address: walletAddress, chainType: "ethereum" });
+      // delegateWallet can hang indefinitely: it returns a promise that only
+      // settles when Privy's consent flow completes, and if that flow never
+      // opens the promise neither resolves nor rejects. Without a deadline the
+      // user is left on a spinner with no way forward and no explanation.
+      await Promise.race([
+        delegateWallet({ address: walletAddress, chainType: "ethereum" }),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Privy did not respond. This app may not have wallet delegation enabled yet.")),
+            45000
+          )
+        ),
+      ]);
       setPhase("idle");
     } catch (e) {
       console.error("[privy] delegation failed:", e);
