@@ -389,7 +389,7 @@ Implementasi delegasi Privy mengimplementasikannya, jadi **tidak ada blocker.** 
 
 Sisa dari percobaan: satu wallet uji bernama `gate2-sponsorship-probe` di akun Privy. Tidak dipakai apa-apa, biarkan atau bersihkan lewat dashboard.
 
-Satu catatan operasional: `wallets().list()` mengembalikan HTTP 500 saat dicoba. Tidak menghalangi apa pun karena kita selalu menyimpan wallet id sendiri di MongoDB, tapi jangan bergantung padanya.
+Satu catatan operasional, **sudah dikoreksi saat tahap 2**: `wallets().list()` sempat mengembalikan HTTP 500, tapi penyebabnya adalah parameter `limit` yang tidak valid, bukan endpoint yang rusak. Dengan `list({ address })` fungsinya normal, dan itu justru diperlukan karena SDK client v1.93.0 hanya mengekspos `address` tanpa `id`.
 
 #### Gerbang 3, LOLOS
 

@@ -63,6 +63,21 @@ export function isSponsorshipConfigured(): boolean {
   return Boolean(APP_ID && APP_SECRET);
 }
 
+/**
+ * Resolve a Privy wallet id from its address.
+ *
+ * Needed because the pinned client SDK's `Wallet` type exposes only `address`,
+ * with no id, so the browser cannot tell us which wallet to send from. The
+ * server has to look it up. Cheap enough to call per request, and the result
+ * is stored on the user document after the first resolution.
+ */
+export async function resolveWalletId(address: string): Promise<string | null> {
+  const privy = getPrivyClient();
+  const res = await privy.wallets().list({ address: ethers.getAddress(address) });
+  const items = res?.data ?? [];
+  return items[0]?.id ?? null;
+}
+
 export interface SponsoredSend {
   /** Poll this with getSponsoredStatus(). The source of truth. */
   transactionId: string;

@@ -186,10 +186,13 @@ Reuse field `status` membuat sebagian besar penjagaan berlaku otomatis.
 | `app/api/scan/route.ts` | cek | QR untuk kartu Exported |
 | `app/collection/page.tsx` | UI | Badge, tombol, filter |
 
+**Celah yang ditemukan saat tahap 2:** SDK client v1.93.0 mengekspos `Wallet.address` tetapi **tidak** `Wallet.id`, padahal pengiriman sponsored dari server memerlukan wallet id. Jadi id harus diresolusi server-side lewat `wallets().list({ address })`, lalu disimpan sebagai `users.privyWalletId` agar tidak perlu diresolusi berulang. Integrasi yang sudah live juga menyimpan `privyUserId` sebagai string literal `"connected"`, bukan id Privy sungguhan, jadi field itu tidak bisa dipakai untuk apa pun.
+
 File baru:
 
 ```
 lib/privy-server.ts                      klien + polling + rate limit
+lib/export-intent.ts                     domain, tipe, dan verifikasi EIP-712
 app/api/privy/export/prepare/route.ts    verifikasi tanda tangan, transfer keluar
 app/api/privy/export/claim/route.ts      transaksi klaim sponsored
 app/api/privy/import/route.ts            transfer balik sponsored
@@ -237,13 +240,13 @@ Semua route Privy `maxDuration = 10` (Hobby plan, ADR-018). Polling dilakukan cl
 
 Pakai `checkRateLimit()` yang sudah ada (ADR-019). Setiap import adalah satu transaksi sponsored.
 
-| Aksi | Batas |
-|---|---|
-| `privy_export` | 3 per menit |
-| `privy_import` | 3 per menit |
-| Sponsored per user per hari | 20, dicek di `lib/privy-server.ts` |
+| Aksi | Batas | Status |
+|---|---|---|
+| `privy_export` | 5 per menit | Terpasang, tahap 2 |
+| `privy_import` | 5 per menit | Tahap 4 |
+| Sponsored per user per hari | 20 | Terpasang, `consumeSponsorshipBudget()` |
 
-Batas harian tidak ada di `checkRateLimit()` sekarang; perlu penambahan kecil dengan window harian.
+Angka per menit mengikuti `checkRateLimit()` yang sudah ada, yaitu 5, bukan 3 seperti draf pertama spec ini. Limiter itu terkunci di 5/menit untuk redeem (ADR-006/019), dan membuat limiter kedua hanya demi selisih dua percobaan jelas tidak sepadan. Batas harian ditambahkan sebagai `checkDailyLimit()` yang terpisah, karena di sana angkanya memang harus bisa diatur.
 
 ---
 

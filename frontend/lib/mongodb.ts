@@ -77,6 +77,12 @@ async function createIndexes(database: Db) {
     // Redeem codes
     database.collection("redeem_codes").createIndex({ tokenId: 1 }),
     database.collection("redeem_codes").createIndex({ txId: 1 }),
+
+    // Privy export intents — the unique index is what makes nonce claiming
+    // atomic, so a replayed signature loses on insert rather than slipping
+    // through a read-then-write gap (ADR-031)
+    database.collection("privy_nonces").createIndex({ nonce: 1 }, { unique: true }),
+    database.collection("privy_nonces").createIndex({ userId: 1, usedAt: -1 }),
   ]);
 }
 
