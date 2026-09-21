@@ -178,7 +178,7 @@ export async function sendSponsored(
   walletId: string,
   tx: SponsoredTxInput
 ): Promise<SponsoredSend> {
-  const privy = getPrivyClient();
+  const url = `https://api.privy.io/v1/wallets/${walletId}/rpc`;
 
   const body = {
     method: "eth_sendTransaction" as const,
@@ -193,36 +193,64 @@ export async function sendSponsored(
     },
   };
 
-  // The signature covers the exact body below, so the two must not drift:
-  // anything added to the request after signing invalidates it.
+  // The signature covers this exact body, so the two are built once and not
+  // reassembled. Anything added after signing invalidates it.
   const authorization = AUTHORIZATION_KEY
     ? generateAuthorizationSignature({
         authorizationPrivateKey: AUTHORIZATION_KEY,
         input: {
           version: 1,
           method: "POST",
-          url: `https://api.privy.io/v1/wallets/${walletId}/rpc`,
+          url,
           body,
           headers: { "privy-app-id": APP_ID! },
         },
       })
     : undefined;
 
-  const res = await privy.wallets().rpc(walletId, {
-    ...body,
-    ...(authorization ? { "privy-authorization-signature": authorization } : {}),
+  // Sent with fetch rather than wallets().rpc() because the SDK gives no way
+  // to set this header. Putting it in the params object leaves it in the
+  // body; passing it through request options does not reach the wire either.
+  // Both return 401 "Missing privy-authorization-signature", while the same
+  // request sent directly returns 200 — the signature was always valid and
+  // only its delivery was broken.
+  if (!APP_ID || !APP_SECRET) {
+    throw new Error("[privy] app credentials are not configured");
+  }
+
+  const httpRes = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization:
+        "Basic " + Buffer.from(`${APP_ID}:${APP_SECRET}`).toString("base64"),
+      "privy-app-id": APP_ID,
+      ...(authorization ? { "privy-authorization-signature": authorization } : {}),
+    },
+    body: JSON.stringify(body),
   });
 
-  const transactionId = res.data?.transaction_id;
+  const res = (await httpRes.json().catch(() => null)) as {
+    data?: { transaction_id?: string; user_operation_hash?: string };
+    error?: string;
+  } | null;
+
+  if (!httpRes.ok) {
+    throw new Error(
+      `[privy] sponsored send failed (${httpRes.status}): ${res?.error ?? "unknown error"}`
+    );
+  }
+
+  const transactionId = res?.data?.transaction_id;
   if (!transactionId) {
     throw new Error(
-      `[privy] sponsored send returned no transaction_id: ${JSON.stringify(res.data)}`
+      `[privy] sponsored send returned no transaction_id: ${JSON.stringify(res?.data)}`
     );
   }
 
   return {
     transactionId,
-    userOperationHash: res.data?.user_operation_hash ?? null,
+    userOperationHash: res?.data?.user_operation_hash ?? null,
   };
 }
 
