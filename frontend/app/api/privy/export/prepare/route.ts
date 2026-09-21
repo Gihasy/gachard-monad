@@ -146,6 +146,15 @@ export async function POST(request: Request) {
       }
     }
 
+    // Record the intended destination BEFORE transferring. If the write that
+    // follows the transfer is lost, this is the only thing tying the card to
+    // the wallet now holding it, and without it reconciliation has no way to
+    // find the card at all. Status stays Digital until the transfer lands.
+    await cardsCollection.updateOne(
+      { _id: card._id },
+      { $set: { exportPending: true, privyWalletAddress: intent.to, updatedAt: new Date().toISOString() } }
+    );
+
     // The nonce above is already spent at this point. That is deliberate: if
     // this transfer fails ambiguously, the card may still have moved, so
     // releasing the signature for reuse could export it twice. The user signs
@@ -199,6 +208,7 @@ export async function POST(request: Request) {
           exportTxHash: txHash,
           updatedAt: new Date().toISOString(),
         },
+        $unset: { exportPending: "" },
       }
     );
 

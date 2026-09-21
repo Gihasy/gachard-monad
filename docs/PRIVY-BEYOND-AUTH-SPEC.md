@@ -308,12 +308,22 @@ Aturan untuk semua route Privy: **jangan pernah membungkus panggilan tulis denga
 
 ### 6.3 Kegagalan
 
-| Skenario | Harapan |
-|---|---|
-| Transfer sukses, MongoDB gagal | Rekonsiliasi memperbaiki dari chain |
-| Klaim timeout | `transaction_id` tersimpan, bisa di-poll ulang |
-| Sponsorship habis | Pesan jelas, kartu tidak terjebak |
-| Delegasi Privy berubah, transfer revert | Terdeteksi tes integrasi 6.1.2 |
+| Skenario | Harapan | Hasil |
+|---|---|---|
+| Transfer sukses, MongoDB gagal | Rekonsiliasi menaikkan ke Exported | LOLOS |
+| Export dimulai, transfer tidak pernah mendarat | Tetap Digital, penanda dibersihkan | LOLOS |
+| Ditandai Exported padahal transfer tidak terjadi | Turun ke Digital, field export dibersihkan | LOLOS |
+| Klaim terkonfirmasi tapi tidak pernah di-poll | Rekonsiliasi menyelesaikannya | LOLOS |
+| Claim id tidak dikenali Privy (404) | Dibersihkan supaya bisa diklaim ulang | LOLOS |
+| Rekonsiliasi dijalankan dua kali | Idempoten, pass kedua nihil perubahan | LOLOS |
+| Sponsorship habis | 429 dengan pesan jelas, kartu tidak setengah jalan | LOLOS |
+| Delegasi Privy berubah, transfer revert | Terdeteksi tes integrasi 6.1.2 | Belum diuji |
+
+**Perubahan urutan penulisan, ditemukan oleh skenario pertama.** Semula `/prepare` menulis `status: "Exported"` dan `privyWalletAddress` dalam satu update setelah transfer. Kalau update itu hilang, kartu tetap terbaca Digital polos dan **tidak ada apa pun yang menghubungkannya ke wallet yang kini memegangnya**, sehingga rekonsiliasi tidak akan pernah menemukannya. Sekarang `exportPending` dan alamat tujuan ditulis lebih dulu, sebelum transfer, lalu dibersihkan setelah status naik. Tanpa perbaikan ini rekonsiliasi terlihat bekerja padahal kasus terpentingnya luput.
+
+**Rekonsiliasi tidak pernah mengirim transaksi.** Ia hanya menggerakkan MongoDB menuju apa yang sudah dikatakan chain, jadi aman dijalankan berulang, tidak bisa menghabiskan saldo sponsorship, dan tidak bisa memperburuk keadaan.
+
+**Endpoint:** `POST /api/admin/privy-reconcile`, batch 10 per panggilan (`maxDuration = 10`, ADR-018), pola yang sama dengan `confirm-all`.
 
 ---
 
