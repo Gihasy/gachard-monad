@@ -16,7 +16,7 @@ import { getCollection } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
 import { marketplaceTransfer, resetNonceCache } from "@/lib/blockchain";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { isSponsorshipConfigured, resolveWallet } from "@/lib/privy-server";
+import { isSponsorshipConfigured, needsDelegation, resolveWallet } from "@/lib/privy-server";
 import { recoverExportIntentSigner, type ExportIntent } from "@/lib/export-intent";
 import { ethers } from "ethers";
 
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
     // Delegation is the real gate. A user-owned wallet the app cannot sign
     // for would take the card and keep it: export would succeed and import
     // could never run, because only the wallet owner can move it back.
-    if (!resolved.delegated) {
+    if (needsDelegation(resolved)) {
       return NextResponse.json(
         {
           error: "Allow Gachard to return cards to your collection first, then try again.",
@@ -168,7 +168,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (resolved.id !== user.privyWalletId) {
+    if (resolved.id && resolved.id !== user.privyWalletId) {
       const usersCollection = await getCollection("users");
       await usersCollection.updateOne({ _id: user._id }, { $set: { privyWalletId: resolved.id } });
     }

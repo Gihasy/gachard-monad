@@ -82,7 +82,14 @@ export function isSponsorshipConfigured(): boolean {
  * user, because their wallet belongs to them and not to the app.
  */
 export interface ResolvedWallet {
-  id: string;
+  /**
+   * Null when Privy knows the wallet but has not exposed an id for it, which
+   * is what an undelegated user wallet looks like. Observed directly: a real
+   * embedded wallet came back with connector_type "embedded", delegated
+   * false, and id null. Treating that as "unknown wallet" tells the user the
+   * wrong thing, so the two cases are kept apart.
+   */
+  id: string | null;
   /**
    * Whether the user has delegated this wallet to the app.
    *
@@ -106,8 +113,8 @@ export async function resolveWallet(
       const user = await privy.users()._get(privyUserId);
       for (const acct of user?.linked_accounts ?? []) {
         const a = acct as { address?: string; id?: string | null; delegated?: boolean };
-        if (a.address && a.address.toLowerCase() === target && a.id) {
-          return { id: a.id, delegated: a.delegated === true, appOwned: false };
+        if (a.address && a.address.toLowerCase() === target) {
+          return { id: a.id ?? null, delegated: a.delegated === true, appOwned: false };
         }
       }
     } catch (e) {
@@ -126,6 +133,11 @@ export async function resolveWalletId(
   privyUserId?: string | null
 ): Promise<string | null> {
   return (await resolveWallet(address, privyUserId))?.id ?? null;
+}
+
+/** True when the wallet exists but the app has no signing rights on it yet. */
+export function needsDelegation(w: ResolvedWallet | null): boolean {
+  return Boolean(w && !w.appOwned && (!w.delegated || !w.id));
 }
 
 export interface SponsoredSend {
