@@ -23,13 +23,19 @@
  *    landed, so a blind retry executes twice. Check on-chain state (or
  *    getSponsoredStatus) before deciding to resend.
  */
-import { PrivyClient } from "@privy-io/node";
+import { generateAuthorizationSignature, PrivyClient } from "@privy-io/node";
 import { ethers } from "ethers";
 import { checkDailyLimit } from "./rate-limit";
 
 const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim();
 const APP_SECRET = process.env.PRIVY_APP_SECRET?.trim();
 const RPC_URL = process.env.RPC_URL?.trim()!;
+/**
+ * Private half of the key quorum the user grants signing rights to.
+ * Server-only. Requests against a delegated user wallet are rejected without
+ * a signature from this key; app-owned wallets do not need one.
+ */
+const AUTHORIZATION_KEY = process.env.PRIVY_AUTHORIZATION_KEY?.trim();
 
 /** CAIP-2 identifier for Monad Testnet (chain ID 10143). */
 export const MONAD_CAIP2 = "eip155:10143";
@@ -174,8 +180,8 @@ export async function sendSponsored(
 ): Promise<SponsoredSend> {
   const privy = getPrivyClient();
 
-  const res = await privy.wallets().rpc(walletId, {
-    method: "eth_sendTransaction",
+  const body = {
+    method: "eth_sendTransaction" as const,
     caip2: MONAD_CAIP2,
     sponsor: true,
     params: {
@@ -185,6 +191,26 @@ export async function sendSponsored(
         ...(tx.data ? { data: tx.data } : {}),
       },
     },
+  };
+
+  // The signature covers the exact body below, so the two must not drift:
+  // anything added to the request after signing invalidates it.
+  const authorization = AUTHORIZATION_KEY
+    ? generateAuthorizationSignature({
+        authorizationPrivateKey: AUTHORIZATION_KEY,
+        input: {
+          version: 1,
+          method: "POST",
+          url: `https://api.privy.io/v1/wallets/${walletId}/rpc`,
+          body,
+          headers: { "privy-app-id": APP_ID! },
+        },
+      })
+    : undefined;
+
+  const res = await privy.wallets().rpc(walletId, {
+    ...body,
+    ...(authorization ? { "privy-authorization-signature": authorization } : {}),
   });
 
   const transactionId = res.data?.transaction_id;
