@@ -159,7 +159,11 @@ function Content({
       // already proven to work against Privy eth_signTypedData_v4. The digest
       // is identical either way, so this costs nothing and removes one
       // difference between the path that works and the path that failed.
-      const signature = await signTypedData({
+      // v3 resolves to { signature }, v1.93.0 resolved to the string itself.
+      // Passing the object straight through is why the server rejected every
+      // signature: ethers got an object, recovery threw, and the route could
+      // only report "Invalid signature".
+      const { signature } = await signTypedData({
         domain: buildExportIntentDomain(),
         types: EXPORT_INTENT_SIGNING_TYPES as unknown as Record<
           string,
