@@ -253,6 +253,22 @@ Konsekuensinya lebih tajam daripada sekadar soal biaya, dan memperkuat rekomenda
 
 Dengan kata lain, upgrade ke v3 bukan hanya berisiko secara bundler, ia juga memindahkan kontrol pengeluaran ke tempat yang tidak bisa kita percayai.
 
+#### Sakelar yang menegakkan ini ada di dashboard
+
+Ditemukan 21 September 2026 saat menyiapkan gerbang 1. Di halaman Fee Sponsorship ada opsi **"Allow transactions from the client"**, dengan keterangan:
+
+> Enable this to allow gas-sponsored transactions from the client-side application without requiring the app secret. When disabled, transactions can only be sponsored from the server with the app secret.
+
+**Posisi yang benar untuk Gachard: MATI.**
+
+Ini bukan preferensi, melainkan konsekuensi langsung dari sifat App ID. `NEXT_PUBLIC_PRIVY_APP_ID` memakai prefix `NEXT_PUBLIC_`, jadi nilainya ter-inline ke bundle JavaScript dan bisa dibaca siapa pun yang membuka DevTools di halaman produksi. App ID bukan rahasia dan tidak pernah dirancang sebagai rahasia.
+
+Kalau sakelar itu dinyalakan, satu-satunya penjaga saldo sponsorship adalah sesuatu yang tercetak terbuka di halaman. Dengan posisi mati, penjaganya adalah App Secret yang hanya hidup di server.
+
+Jadi risiko "Tinggi" di tabel 5.3 bukan hipotesis arsitektural, melainkan satu klik di dashboard. Sakelar ini adalah penegak teknis dari seluruh argumen di 5.4, dan posisinya harus dicatat di ADR-031 supaya tidak diubah orang lain di kemudian hari tanpa membaca alasannya.
+
+Konsekuensi yang harus diterima: gerbang 2 dan seluruh implementasi sponsorship **wajib** punya App Secret. Tidak ada jalan pintas lewat client, dan itu memang tujuannya.
+
 #### Wallet-nya memang tidak bisa dipakai di luar Gachard
 
 Embedded wallet terikat pada app ID kita, dan di v1.93.0 tidak ada export private key (ADR-028). User tidak bisa membawanya ke MetaMask atau dApp lain. Hari ini, satu-satunya cara wallet itu bertransaksi adalah lewat Gachard.
