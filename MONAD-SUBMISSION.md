@@ -24,7 +24,7 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 
 ### Advanced Features
 - **Pyth Entropy Integration**: Provably fair pack randomness using on-chain verifiable RNG, replacing Math.random() with cryptographically secure seed generation
-- **Privy Embedded Wallet**: Optional self-custody wallet for advanced users, with progressive disclosure UX. Wallet creation and address verification on the block explorer are live; exporting the key is not available on the pinned SDK version (v1.93.0), and card export to that wallet is roadmap, not shipped
+- **Privy Beyond Authentication**: Cards move both ways between Gachard and the user's own Privy wallet. Export is authorised by an EIP-712 intent the user signs with that wallet; the return transfer is signed and sent by the user themselves, and Gachard has no route that could do it for them. Gas on both sponsored steps is paid by Privy's native sponsorship, so the wallet transacts while its MON balance stays at zero. Exporting the private key remains unavailable on the pinned SDK (v1.93.0)
 - **AI Anomaly Detection**: Wash-trading risk scoring on marketplace trades via MiMo LLM, with the resulting score written on-chain through `recordVerification()`. Requires `MIMO_API_KEY`; without it the call degrades to a neutral score rather than failing the trade
 - **Dismantle & Crystal**: Burn cards to earn Crystal currency
 - **QR Verification**: Scan physical cards for authenticity verification
@@ -76,7 +76,7 @@ Stated plainly so nothing here has to be taken on trust:
 | Dismantle → Crystal | Live |
 | Print request → vault lock → redeem | Live end-to-end in software; no physical card has been produced and redeemed yet |
 | AI risk scoring + market insight | Code live and wired; requires `MIMO_API_KEY` to be set in the deployment |
-| Privy self-custody wallet | Creation and address verification live; key export unavailable on v1.93.0 |
+| Privy self-custody wallet | Live: wallet creation, card export and import, both gas-sponsored by Privy. Key export still unavailable on v1.93.0 |
 | AI vision card verification | Not built. QR + on-chain lookup is the only verification today |
 | Gameplay (`/play`) | Not built, marked "Coming Soon" in the app |
 | Payments | Simulated; no processor integrated |

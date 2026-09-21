@@ -433,7 +433,7 @@ Building on the self-custody wallet foundation (Privy integration, currently liv
 
 Under this planned feature, cards could later be brought back into the Gachard ecosystem (re-imported) to resume in-app features such as marketplace trading, printing, and dismantling. This would complete the loop between custodial simplicity and true blockchain ownership, letting users choose their own level of control.
 
-**Current status:** Self-custody wallet creation and address verification are live. Card export and re-import are planned, not yet implemented.
+**Current status:** Shipped. A card can be moved to the user's own Privy wallet and brought back, with Privy paying gas on both sponsored steps (ADR-031). Exporting the private key itself is still unavailable on the pinned SDK (ADR-028).
 
 ### AI Vision Verification (Planned)
 
