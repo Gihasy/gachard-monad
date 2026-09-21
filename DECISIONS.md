@@ -206,3 +206,33 @@ Four properties make the result auditable:
 **Scope**: `@google/generative-ai` is left in `package.json` for now; removing it is safe cleanup but npm reinstalls on this Windows setup have historically corrupted `node_modules`, so it is deferred rather than risked mid-hackathon.
 
 **Note on AI vision**: card image verification remains unbuilt. ADR-022 deferred it, and nothing in this decision changes that, this ADR is only about which provider serves the text-based AI features that already exist.
+
+## ADR-031: Card Export and Import via Privy, With Server-Side Sponsored Signing
+**Status**: Accepted
+**Supersedes the scope of**: ADR-028 (Privy stays optional and isolated, but is no longer view-only)
+
+**Decision**: A user may move a Digital card out of Gachard's custodial wallet into their own Privy embedded wallet, and move it back. Privy is the active executor in both directions, not a destination address.
+
+**Export**: the user first signs an EIP-712 intent with their own Privy wallet naming the tokenId, the destination address, and a single-use nonce. The backend verifies the recovered address matches the Privy wallet recorded for that user, then calls `marketplaceTransfer()` from the admin wallet, because the custodial wallet is the only party that can move a card it holds. A claim transaction is then sent **from the user's Privy wallet with gas paid by Privy**, and only a card that has been claimed may be imported back.
+
+**Import**: the user signs and sends `safeTransferFrom` themselves, from their own Privy wallet, with gas paid by Privy. The backend cannot do this and deliberately has no route that can. Detection is by `TransferSingle` anchored to the claim transaction's block, the same anchoring pattern as ADR-029's fulfillment lookup.
+
+**The `sponsor` flag never appears in client code.** All sponsored transactions are sent server-side through `@privy-io/node` using `PRIVY_APP_SECRET`, and the Privy Dashboard option "Allow transactions from the client" stays **off**. `NEXT_PUBLIC_PRIVY_APP_ID` is inlined into the browser bundle by definition, so with that option on, the only thing guarding the sponsorship balance would be a value printed in the page source. This holds independently of the SDK pinning problem and would still hold if that problem disappeared.
+
+**Client SDK stays at `@privy-io/react-auth@1.93.0`.** Verified against the installed package: `useSignMessage`, `useSignTypedData` and `useSendTransaction` are all present, so nothing about this feature requires the v2/v3 upgrade that ADR-028 found incompatible. Signing happens on the pinned client; sponsorship happens on the server. `useExportWallet` remains unavailable and remains out of scope.
+
+**No smart contract changes.** `marketplaceTransfer()` is `onlyOwner` but does not constrain the recipient, which covers export. Import rides on stock ERC-1155 `safeTransferFrom`, since the `_update()` override blocks only `Vaulted` cards. The H-2 fix already maintains `lastOwner` on standard transfers, so a user-initiated transfer does not corrupt the state `redeem()` depends on. `GachardCard` and `PackEntropy` are untouched, so no redeploy, no re-verification, and the 78/78 suite still stands.
+
+**"Exported" is a MongoDB status, not an on-chain enum**, following the precedent set for "Burned" in ADR-026. Adding a `CardStatus` member would require a redeploy and would invalidate the paragraph above. The on-chain way to confirm a card is out is `balanceOf(custodialWallet, tokenId) == 0`. Reusing the existing `status` field is deliberate: `dismantle` and `marketplace/listings` already require `status === "Digital"`, so both are guarded by construction; only `print` needs a new check, because it tests only for "Burned".
+
+**Reason**: the Privy bounty requires integration beyond authentication, and ADR-028's wallet is created as a side effect of login and then only displayed, which almost certainly does not qualify. More durably, export/import is the feature that gives ADR-028's "For Advanced Users" section a reason to exist and closes the loop the README roadmap already promises. Import is the strongest evidence of the claim: the card is genuinely the user's, and Gachard has no route that can take it back.
+
+**Verified on 21 September 2026** with three gates, all passed. A throwaway wallet sent a zero-value self-transfer on Monad Testnet with `sponsor: true`; it confirmed in block 64494516 using 248,734 gas, the on-chain payer was neither the user's wallet nor the admin wallet, and the wallet's balance was 0.0 MON before and after. The server SDK builds, typechecks and loads in the Next.js Node runtime without touching Turbopack.
+
+**Consequence, sponsorship is asynchronous**: `wallets().rpc()` returns an empty `hash` plus a `user_operation_hash` and a `transaction_id`. The real hash appears only after polling `transactions().get()`. Code that trusts the first response stores an empty string and fails silently, which is the same failure shape as the `tokenId: null` bug fixed in commit `4658e4e`. Every sponsored call must treat `transaction_id` as the source of truth and poll.
+
+**Consequence, sponsored wallets carry EIP-7702 code**: sponsorship runs on ERC-4337 with Alchemy as provider, and after its first sponsored transaction the user's wallet holds `0xef0100...` delegation code. The address does not change, so the destination a user sees is stable. But ERC-1155 `safeTransferFrom` refuses a recipient with code unless it implements `onERC1155Received`; the current Privy delegate returns the `0xf23a6e61` magic value, so transfers are accepted. This depends on a third-party implementation and must be covered by an integration test. Export is immune regardless, because `marketplaceTransfer()` calls `_update()` directly and skips the acceptance check; that immunity is inherited luck and is now a property to preserve deliberately.
+
+**Consequence, spend control is ours**: Privy caps total spend only. Per-user and per-timeframe limits are the application's job, and every import is one sponsored transaction, so an export/import loop drains the balance unless rate limited. `checkRateLimit()` from ADR-019 is reused. A global dashboard cap is adequate for the hackathon demo and is not adequate for public use.
+
+**Known limitation**: a card sitting in a user's Privy wallet cannot be listed, printed, dismantled or redeemed until it is imported back. This is inherent, not a defect: the platform does not hold it. `wallets().list()` also returns HTTP 500 against this account, so wallet ids are read from MongoDB rather than from Privy.

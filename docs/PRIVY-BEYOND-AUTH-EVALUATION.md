@@ -153,7 +153,7 @@ Pertanyaan kunci di dokumen tugas ("siapa yang menandatangani?") punya jawaban y
 
 4. **Backend mengeksekusi transfer keluar.** Ini tetap ditandatangani admin wallet, dan itu wajar: kartu memang dipegang custodial wallet, jadi hanya admin yang bisa memindahkannya. Tidak ada cara lain dan tidak perlu disamarkan.
 
-5. **Transaksi klaim yang disponsori Privy.** Setelah transfer mendarat, kartu ada di wallet Privy user. Langkah klaim adalah transaksi on-chain yang dikirim **dari wallet Privy user** dengan **gas dibayar Privy**, memanggil `recordVerification()` atau fungsi acknowledgment ringan. Dua jalur implementasi, lihat Bagian 6.
+5. **Transaksi klaim yang disponsori Privy.** Setelah transfer mendarat, kartu ada di wallet Privy user. Langkah klaim adalah transaksi on-chain yang dikirim **dari wallet Privy user** dengan **gas dibayar Privy**, berupa self-transfer bernilai nol. (Kandidat yang lebih bermakna, `recordVerification()`, ternyata `onlyOwner` sehingga akan revert kalau dipanggil wallet user. Diperiksa saat spec ditulis; lihat `docs/PRIVY-BEYOND-AUTH-SPEC.md` 2.4.)
 
 Yang membedakan ini dari desain lama: wallet Privy bukan lagi alamat tujuan pasif. Wallet itu **menandatangani** (langkah 2) dan **mengirim transaksi yang gasnya dibayar Privy** (langkah 5).
 
