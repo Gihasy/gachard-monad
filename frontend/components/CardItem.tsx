@@ -103,7 +103,7 @@ export default function CardItem({
   const isInProgress = currentStatus === "In Progress";
   const isShipping = currentStatus === "Shipping";
   const isPhysical = currentStatus === "Physical";
-  const isExported = currentStatus === "Exported";
+  const isExported = currentStatus === "In Your Wallet";
   // Export is offered on exactly the same footing as Print and Sell: a plain
   // Digital card the platform still holds.
   const canExport = currentStatus === "Digital" && tokenId !== null && !isListed;
@@ -478,7 +478,7 @@ export default function CardItem({
           userId={userId}
           onClose={() => setTransferMode(null)}
           onDone={() => {
-            const next = transferMode === "export" ? "Exported" : "Digital";
+            const next = transferMode === "export" ? "In Your Wallet" : "Digital";
             setCurrentStatus(next);
             if (tokenId !== null) onStatusChange?.(tokenId, next);
           }}

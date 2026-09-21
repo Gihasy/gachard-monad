@@ -58,6 +58,15 @@ export async function GET(
       importStatus: card.importStatus ?? null,
     };
 
+    // A completed import has had its in-flight fields cleared, so every check
+    // below would report "not settled" to anyone still polling. Settling is
+    // otherwise one-shot: whoever observes the confirmation consumes it, and
+    // a client that polled a moment later would spin until it gave up while
+    // the card was already home.
+    if (card.status === "Digital" && card.importStatus === "confirmed") {
+      return NextResponse.json({ ...base, settled: true });
+    }
+
     // Import takes priority: once one is in flight, the claim is already
     // settled and its state is only history.
     if (card.importTxId && !card.importTxHash) {

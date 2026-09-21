@@ -11,7 +11,7 @@ function getDisplayStatus(fulfillmentStatus: string | null | undefined, cardStat
   if (cardStatus === "Burned") return "Burned";
   // Exported outranks fulfillmentStatus: the card is not in the platform's
   // hands at all, so nothing about the printing flow applies to it.
-  if (cardStatus === "Exported") return "Exported";
+  if (cardStatus === "Exported") return "In Your Wallet";
   if (!fulfillmentStatus) return "Digital";
   if (["Locked", "Processing", "Printed"].includes(fulfillmentStatus)) return "In Progress";
   if (fulfillmentStatus === "Shipping") return "Shipping";

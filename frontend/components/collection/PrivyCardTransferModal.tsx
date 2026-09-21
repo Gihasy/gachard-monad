@@ -171,11 +171,16 @@ function Content({
     }
   }, [card, poll, onDone]);
 
+  // Only export needs the wallet in the browser, because only export asks the
+  // user to sign. Import is executed entirely server-side from the stored
+  // wallet id, so gating it on a Privy session would strand a card for anyone
+  // who exported on one device and came back on another.
   useEffect(() => {
+    if (mode !== "export") return;
     if (!ready) return;
     if (!authenticated || !walletAddress) setPhase("connect");
     else if (phase === "connect") setPhase("idle");
-  }, [ready, authenticated, walletAddress, phase]);
+  }, [mode, ready, authenticated, walletAddress, phase]);
 
   const busy = ["signing", "moving", "claiming", "returning"].includes(phase);
 
@@ -224,7 +229,7 @@ function Content({
         <div className="flex gap-2">
           <button
             onClick={mode === "export" ? runExport : runImport}
-            disabled={busy || !ready}
+            disabled={busy || (mode === "export" && !ready)}
             className="btn-primary flex-1 !py-2 !text-xs disabled:opacity-50"
             data-testid="privy-transfer-confirm"
           >
