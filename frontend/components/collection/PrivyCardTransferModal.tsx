@@ -21,6 +21,10 @@ import {
   useSignTypedData,
   useWallets,
 } from "@privy-io/react-auth";
+import {
+  buildExportIntentDomain,
+  EXPORT_INTENT_SIGNING_TYPES,
+} from "@/lib/export-intent";
 import { monadTestnet } from "@/lib/monad-testnet";
 
 type Card = {
@@ -91,35 +95,27 @@ function Content({
       const deadline = Math.floor(Date.now() / 1000) + 600;
       if (!userId) throw new Error("Please sign in again.");
 
+      // Build the domain with the same helper the server verifies against, so
+      // the two can never drift. (Address casing turned out NOT to matter:
+      // ethers normalises it before hashing and viem accepts either form.)
+      //
+      // uint256 values are sent as strings because that is the exact shape
+      // already proven to work against Privy eth_signTypedData_v4. The digest
+      // is identical either way, so this costs nothing and removes one
+      // difference between the path that works and the path that failed.
       const signature = await signTypedData({
-        domain: {
-          name: "Gachard",
-          version: "1",
-          chainId: monadTestnet.id,
-          verifyingContract: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS!,
-        },
-        types: {
-          EIP712Domain: [
-            { name: "name", type: "string" },
-            { name: "version", type: "string" },
-            { name: "chainId", type: "uint256" },
-            { name: "verifyingContract", type: "address" },
-          ],
-          ExportIntent: [
-            { name: "tokenId", type: "uint256" },
-            { name: "to", type: "address" },
-            { name: "userId", type: "string" },
-            { name: "nonce", type: "string" },
-            { name: "deadline", type: "uint256" },
-          ],
-        },
+        domain: buildExportIntentDomain(),
+        types: EXPORT_INTENT_SIGNING_TYPES as unknown as Record<
+          string,
+          { name: string; type: string }[]
+        >,
         primaryType: "ExportIntent",
         message: {
-          tokenId: card.tokenId,
+          tokenId: String(card.tokenId),
           to: walletAddress!,
           userId,
           nonce,
-          deadline,
+          deadline: String(deadline),
         },
       });
 

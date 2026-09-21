@@ -135,8 +135,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "This signature was already used." }, { status: 409 });
     }
 
-    // Resolve once and cache on the user; later stages send from this wallet
-    // and the client SDK cannot tell us its id.
+    // Refuse to send the card anywhere Privy cannot sign from.
+    //
+    // This is the check that matters most in the whole route. A linked
+    // external wallet passes every test above: the user really controls it,
+    // so the signature verifies. But the server sends the import transfer
+    // from that wallet via Privy, and it cannot do that for a wallet Privy
+    // does not own. The card would leave and never be able to come back.
+    //
+    // Resolving the id here also caches it for the claim and import stages.
     let privyWalletId: string | null = user.privyWalletId ?? null;
     if (!privyWalletId) {
       privyWalletId = await resolveWalletId(privyAddress);
@@ -144,6 +151,15 @@ export async function POST(request: Request) {
         const usersCollection = await getCollection("users");
         await usersCollection.updateOne({ _id: user._id }, { $set: { privyWalletId } });
       }
+    }
+    if (!privyWalletId) {
+      return NextResponse.json(
+        {
+          error:
+            "That wallet is not one Gachard can return cards from. Open Profile and set up your Gachard wallet, then try again.",
+        },
+        { status: 400 }
+      );
     }
 
     // Record the intended destination BEFORE transferring. If the write that

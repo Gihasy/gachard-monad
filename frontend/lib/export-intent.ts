@@ -48,6 +48,23 @@ export const EXPORT_INTENT_TYPES = {
 } as const;
 
 /**
+ * Types for CLIENT-SIDE signing, which must include EIP712Domain.
+ *
+ * Verification does not need it (ethers derives it from the domain), but the
+ * signing payload does. Kept beside the verification types so the two cannot
+ * drift apart.
+ */
+export const EXPORT_INTENT_SIGNING_TYPES = {
+  EIP712Domain: [
+    { name: "name", type: "string" },
+    { name: "version", type: "string" },
+    { name: "chainId", type: "uint256" },
+    { name: "verifyingContract", type: "address" },
+  ],
+  ...EXPORT_INTENT_TYPES,
+} as const;
+
+/**
  * Recover the signer, or null if the signature is malformed.
  *
  * Returns null instead of throwing so callers answer with one generic

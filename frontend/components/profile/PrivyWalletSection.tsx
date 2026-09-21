@@ -12,7 +12,12 @@ function PrivyWalletContent() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const wallet = wallets[0];
+  // Must be the embedded Privy wallet specifically. useWallets() also returns
+  // external wallets (an injected MetaMask, say), and wallets[0] can be one of
+  // those. Saving an external address here is not cosmetic: it is the address
+  // cards get exported to, and the server cannot send from a wallet Privy does
+  // not own, so the card could never be brought back (ADR-031).
+  const wallet = wallets.find((w) => w.walletClientType === "privy");
   const isConnected = authenticated && !!wallet;
 
   // Save wallet info to backend when first connected
