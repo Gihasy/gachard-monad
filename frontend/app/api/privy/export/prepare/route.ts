@@ -16,7 +16,7 @@ import { getCollection } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
 import { marketplaceTransfer, resetNonceCache } from "@/lib/blockchain";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { isSponsorshipConfigured, resolveWalletId } from "@/lib/privy-server";
+import { isSponsorshipConfigured, resolveWallet } from "@/lib/privy-server";
 import { recoverExportIntentSigner, type ExportIntent } from "@/lib/export-intent";
 import { ethers } from "ethers";
 
@@ -144,15 +144,8 @@ export async function POST(request: Request) {
     // does not own. The card would leave and never be able to come back.
     //
     // Resolving the id here also caches it for the claim and import stages.
-    let privyWalletId: string | null = user.privyWalletId ?? null;
-    if (!privyWalletId) {
-      privyWalletId = await resolveWalletId(privyAddress);
-      if (privyWalletId) {
-        const usersCollection = await getCollection("users");
-        await usersCollection.updateOne({ _id: user._id }, { $set: { privyWalletId } });
-      }
-    }
-    if (!privyWalletId) {
+    const resolved = await resolveWallet(privyAddress, user.privyUserId);
+    if (!resolved) {
       return NextResponse.json(
         {
           error:
@@ -160,6 +153,24 @@ export async function POST(request: Request) {
         },
         { status: 400 }
       );
+    }
+
+    // Delegation is the real gate. A user-owned wallet the app cannot sign
+    // for would take the card and keep it: export would succeed and import
+    // could never run, because only the wallet owner can move it back.
+    if (!resolved.delegated) {
+      return NextResponse.json(
+        {
+          error: "Allow Gachard to return cards to your collection first, then try again.",
+          code: "needs_delegation",
+        },
+        { status: 409 }
+      );
+    }
+
+    if (resolved.id !== user.privyWalletId) {
+      const usersCollection = await getCollection("users");
+      await usersCollection.updateOne({ _id: user._id }, { $set: { privyWalletId: resolved.id } });
     }
 
     // Record the intended destination BEFORE transferring. If the write that

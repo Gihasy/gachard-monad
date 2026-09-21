@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
     let walletId: string | null = user.privyWalletId ?? null;
     if (!walletId) {
-      walletId = await resolveWalletId(privyAddress);
+      walletId = await resolveWalletId(privyAddress, user.privyUserId);
       if (!walletId) {
         return NextResponse.json(
           { error: "Could not locate the self-custody wallet." },

@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   PrivyProvider,
+  useDelegatedActions,
   usePrivy,
   useSignTypedData,
   useWallets,
@@ -38,6 +39,8 @@ type Mode = "export" | "import";
 type Phase =
   | "idle"
   | "connect"
+  | "delegate"
+  | "delegating"
   | "signing"
   | "moving"
   | "claiming"
@@ -64,12 +67,44 @@ function Content({
   const { ready, authenticated, login, user } = usePrivy();
   const { wallets } = useWallets();
   const { signTypedData } = useSignTypedData();
+  // v1.93.0 ships this hook with an empty interface, but the implementation is
+  // there (see the evaluation, 1.4). Cast rather than upgrade the SDK.
+  const { delegateWallet } = useDelegatedActions() as unknown as {
+    delegateWallet: (args: { address: string; chainType: "ethereum" }) => Promise<void>;
+  };
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
-  const walletAddress = embedded?.address ?? user?.wallet?.address ?? null;
+  // Only the embedded wallet counts. user.wallet.address was a fallback here
+  // and it is wrong: it can resolve to a linked external wallet, which
+  // useSignTypedData cannot sign with and the server could never send from.
+  const walletAddress = embedded?.address ?? null;
+
+  // Delegation is what lets Gachard send the return transfer later. Without it
+  // a card can leave and never come back, because the wallet belongs to the
+  // user and the server cannot sign for it. ADR-031 called for this; the first
+  // build skipped it because the test wallet was app-owned and needed no
+  // permission at all.
+  const delegated = (user?.linkedAccounts ?? []).some((a) => {
+    const w = a as { type?: string; walletClientType?: string; delegated?: boolean };
+    return w.type === "wallet" && w.walletClientType === "privy" && w.delegated === true;
+  });
+
+  const runDelegate = useCallback(async () => {
+    if (!walletAddress) return;
+    try {
+      setPhase("delegating");
+      setMessage(null);
+      await delegateWallet({ address: walletAddress, chainType: "ethereum" });
+      setPhase("idle");
+    } catch (e) {
+      console.error("[privy] delegation failed:", e);
+      setPhase("error");
+      setMessage(e instanceof Error ? e.message : "Could not set up your wallet.");
+    }
+  }, [walletAddress, delegateWallet]);
 
   const poll = useCallback(async (cardId: string) => {
     for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
@@ -175,14 +210,18 @@ function Content({
     if (mode !== "export") return;
     if (!ready) return;
     if (!authenticated || !walletAddress) setPhase("connect");
+    else if (!delegated && (phase === "connect" || phase === "idle")) setPhase("delegate");
     else if (phase === "connect") setPhase("idle");
-  }, [mode, ready, authenticated, walletAddress, phase]);
+  }, [mode, ready, authenticated, walletAddress, delegated, phase]);
 
-  const busy = ["signing", "moving", "claiming", "returning"].includes(phase);
+  const busy = ["signing", "moving", "claiming", "returning", "delegating"].includes(phase);
 
   const label: Record<Phase, string> = {
     idle: "",
     connect: "Set up your wallet first",
+    delegate:
+      "One-time step: allow Gachard to send this card back to your collection later.",
+    delegating: "Setting up…",
     signing: "Waiting for you to confirm…",
     moving: "Moving your card…",
     claiming: "Finishing the handover…",
@@ -221,7 +260,18 @@ function Content({
         </button>
       )}
 
-      {phase !== "connect" && phase !== "done" && (
+      {(phase === "delegate" || phase === "delegating") && (
+        <button
+          onClick={runDelegate}
+          disabled={phase === "delegating"}
+          className="btn-primary w-full !py-2 !text-xs disabled:opacity-50"
+          data-testid="privy-delegate"
+        >
+          {phase === "delegating" ? "…" : "Allow"}
+        </button>
+      )}
+
+      {phase !== "connect" && phase !== "delegate" && phase !== "delegating" && phase !== "done" && (
         <div className="flex gap-2">
           <button
             onClick={mode === "export" ? runExport : runImport}

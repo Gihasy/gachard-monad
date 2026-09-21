@@ -5,7 +5,7 @@ import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import { monadTestnet } from "@/lib/monad-testnet";
 
 function PrivyWalletContent() {
-  const { ready, authenticated, login, logout } = usePrivy();
+  const { ready, authenticated, login, logout, user } = usePrivy();
   const { wallets } = useWallets();
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -30,14 +30,18 @@ function PrivyWalletContent() {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
-        privyUserId: wallet?.address ? "connected" : null,
+        // The real Privy DID, not a placeholder. It is the only way the
+        // server can look up a USER-OWNED embedded wallet: wallets().list()
+        // returns app-owned wallets only, so without this the server cannot
+        // find the wallet it needs to transact from (ADR-031).
+        privyUserId: user?.id ?? null,
         privyWalletAddress: wallet?.address,
       }),
     })
       .then(() => setSaved(true))
       .catch(() => {})
       .finally(() => setSaving(false));
-  }, [ready, isConnected, saved, saving, wallet]);
+  }, [ready, isConnected, saved, saving, wallet, user]);
 
   if (!ready) return null;
 

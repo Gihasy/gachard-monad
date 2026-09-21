@@ -64,18 +64,68 @@ export function isSponsorshipConfigured(): boolean {
 }
 
 /**
- * Resolve a Privy wallet id from its address.
+ * Resolve a Privy wallet id.
  *
  * Needed because the pinned client SDK's `Wallet` type exposes only `address`,
- * with no id, so the browser cannot tell us which wallet to send from. The
- * server has to look it up. Cheap enough to call per request, and the result
- * is stored on the user document after the first resolution.
+ * with no id, so the browser cannot tell us which wallet to send from.
+ *
+ * Two lookups, because they cover different kinds of wallet and the
+ * difference is easy to get wrong:
+ *
+ * - `users()._get(did)` finds a USER-OWNED embedded wallet, which is what
+ *   every real user has.
+ * - `wallets().list({address})` only ever returns APP-OWNED wallets, the ones
+ *   created server-side (owner_id: null).
+ *
+ * Relying on the second alone is a trap: it silently works for a wallet you
+ * created through the API during testing and finds nothing at all for a real
+ * user, because their wallet belongs to them and not to the app.
  */
-export async function resolveWalletId(address: string): Promise<string | null> {
+export interface ResolvedWallet {
+  id: string;
+  /**
+   * Whether the user has delegated this wallet to the app.
+   *
+   * Decisive for export: without delegation the server cannot send the return
+   * transfer, so the card would leave and be unable to come back. App-owned
+   * wallets need no delegation, since the app already controls them.
+   */
+  delegated: boolean;
+  appOwned: boolean;
+}
+
+export async function resolveWallet(
+  address: string,
+  privyUserId?: string | null
+): Promise<ResolvedWallet | null> {
   const privy = getPrivyClient();
+  const target = ethers.getAddress(address).toLowerCase();
+
+  if (privyUserId && privyUserId.startsWith("did:privy:")) {
+    try {
+      const user = await privy.users()._get(privyUserId);
+      for (const acct of user?.linked_accounts ?? []) {
+        const a = acct as { address?: string; id?: string | null; delegated?: boolean };
+        if (a.address && a.address.toLowerCase() === target && a.id) {
+          return { id: a.id, delegated: a.delegated === true, appOwned: false };
+        }
+      }
+    } catch (e) {
+      console.warn("[privy] user lookup failed:", e instanceof Error ? e.message : e);
+    }
+  }
+
   const res = await privy.wallets().list({ address: ethers.getAddress(address) });
-  const items = res?.data ?? [];
-  return items[0]?.id ?? null;
+  const appWallet = (res?.data ?? [])[0];
+  return appWallet?.id ? { id: appWallet.id, delegated: true, appOwned: true } : null;
+}
+
+/** Back-compat helper for callers that only need the id. */
+export async function resolveWalletId(
+  address: string,
+  privyUserId?: string | null
+): Promise<string | null> {
+  return (await resolveWallet(address, privyUserId))?.id ?? null;
 }
 
 export interface SponsoredSend {
