@@ -141,7 +141,7 @@ User di /collection (tab Exported)
 [3] Poll transactions().get(transaction_id) sampai confirmed
   |
   v
-[4] Verifikasi TransferSingle, di-anchor ke block transaksi klaim
+[4] Verifikasi balanceOf(custodialWallet, tokenId) == 1
   |
   v
 [5] cards.status = "Digital", kartu kembali aktif
@@ -149,7 +149,9 @@ User di /collection (tab Exported)
 
 **Kenapa backend tidak bisa melakukan ini sendiri:** kartu dipegang wallet user. Hanya pemiliknya yang bisa memindahkan. Ini bukan keterbatasan, ini buktinya. Demo sebaiknya menunjukkan bahwa admin console **tidak punya** tombol untuk menarik kartu kembali.
 
-**Anchoring wajib**, bukan opsional. Blok Monad ~0,3 detik, jadi memindai mundur dari chain head akan kehilangan jejak dalam hitungan menit. Pakai `exportClaimBlock` sebagai titik jangkar, persis pola `getFulfillTxHash` di commit `4658e4e`.
+**Verifikasi pakai `balanceOf`, bukan pemindaian event.** Draf pertama spec ini meminta pemindaian `TransferSingle` yang di-anchor ke block klaim. Itu warisan dari desain lama, ketika backend harus mendeteksi transfer yang tidak ia mulai sendiri. Sekarang kita yang mengirim transfernya dan memegang hash-nya, jadi satu pembacaan `balanceOf(custodialWallet, tokenId)` lebih murah daripada paginasi log dan lebih kuat sebagai bukti daripada event yang cocok: kartu baru benar-benar kembali kalau custodial wallet memang memegangnya.
+
+`exportClaimBlock` tetap disimpan sebagai provenance klaim, tapi tidak lagi menopang apa pun. Kalau transaksi import terkonfirmasi sementara `balanceOf` masih nol, status ditandai `unverified` dan tidak dinaikkan jadi Digital, karena yang menentukan adalah kondisi chain, bukan tanda terima transaksi.
 
 ---
 
