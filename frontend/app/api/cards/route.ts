@@ -9,6 +9,9 @@ import { getAuthenticatedUser } from "@/lib/session";
  */
 function getDisplayStatus(fulfillmentStatus: string | null | undefined, cardStatus?: string): string {
   if (cardStatus === "Burned") return "Burned";
+  // Exported outranks fulfillmentStatus: the card is not in the platform's
+  // hands at all, so nothing about the printing flow applies to it.
+  if (cardStatus === "Exported") return "Exported";
   if (!fulfillmentStatus) return "Digital";
   if (["Locked", "Processing", "Printed"].includes(fulfillmentStatus)) return "In Progress";
   if (fulfillmentStatus === "Shipping") return "Shipping";

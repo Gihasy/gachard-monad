@@ -36,6 +36,15 @@ export async function POST(request: Request) {
     if (card.status === "Burned") {
       return NextResponse.json({ error: "Card has been dismantled and cannot be redeemed." }, { status: 400 });
     }
+    // Already unreachable in practice, since an exported card has no
+    // fulfillmentStatus and the next check would reject it. Stated explicitly
+    // so the user gets the real reason instead of being told to claim shipping.
+    if (card.status === "Exported") {
+      return NextResponse.json(
+        { error: "Card is in your own wallet. Return it to Gachard first." },
+        { status: 400 }
+      );
+    }
     if (card.fulfillmentStatus !== "Real") {
       return NextResponse.json(
         { error: "Card must be claimed (status: Physical) before redeeming. Please claim shipping first." },

@@ -14,6 +14,7 @@ const CARD_STATUS_MAP: Record<string, string> = {
   Digital: "Digital",
   Vaulted: "Print Requested",
   Real: "Physical",
+  Exported: "In Your Wallet",
 };
 
 const TX_TYPE_MAP: Record<string, string> = {
@@ -26,6 +27,8 @@ const TX_TYPE_MAP: Record<string, string> = {
   sold: "Sold",
   dismantled: "Dismantled",
   claimed: "Physical",
+  privy_export: "Sent to Your Wallet",
+  privy_import: "Returned to Gachard",
 };
 
 /**

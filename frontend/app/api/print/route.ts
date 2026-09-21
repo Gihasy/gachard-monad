@@ -42,6 +42,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Card has been dismantled and cannot be printed." }, { status: 400 });
     }
 
+    // Block print while the card is in the user's own wallet. Unlike dismantle
+    // and marketplace listing, this route only tested for "Burned", so an
+    // exported card would otherwise have slipped through (ADR-031).
+    if (card.status === "Exported") {
+      return NextResponse.json(
+        { error: "Card is in your own wallet. Return it to Gachard before requesting a print." },
+        { status: 400 }
+      );
+    }
+
     // Generate redeem code (plaintext TIDAK pernah ke frontend atau on-chain)
     const code = generateRedeemCode();
     const hash = hashRedeemCode(code);

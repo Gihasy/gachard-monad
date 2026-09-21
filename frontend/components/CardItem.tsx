@@ -1,12 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import QRScanner from "./QRScanner";
 import CardDetailModal from "./CardDetailModal";
 import ListingModal from "./ListingModal";
 import SellButton from "./SellButton";
 import ProgressIndicator from "./ProgressIndicator";
+
+// Loaded only when the user opens it, and ssr:false, so the Privy SDK never
+// ships with /collection itself. Same pattern as /profile (ADR-028, ADR-031).
+const PrivyCardTransferModal = dynamic(
+  () => import("./collection/PrivyCardTransferModal"),
+  { ssr: false }
+);
 
 const RARITY_COLORS = [
   "var(--rarity-common)",
@@ -81,6 +89,7 @@ export default function CardItem({
   const [claimError, setClaimError] = useState<string | null>(null);
   const [showClaimScanner, setShowClaimScanner] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(status);
+  const [transferMode, setTransferMode] = useState<"export" | "import" | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [isListed, setIsListed] = useState(initialIsListed || false);
   const [listingId, setListingId] = useState(initialListingId || null);
@@ -94,6 +103,10 @@ export default function CardItem({
   const isInProgress = currentStatus === "In Progress";
   const isShipping = currentStatus === "Shipping";
   const isPhysical = currentStatus === "Physical";
+  const isExported = currentStatus === "Exported";
+  // Export is offered on exactly the same footing as Print and Sell: a plain
+  // Digital card the platform still holds.
+  const canExport = currentStatus === "Digital" && tokenId !== null && !isListed;
 
   const isFormValid =
     form.recipientName.trim() &&
@@ -339,6 +352,24 @@ export default function CardItem({
             {!isListed && canList && (
               <SellButton onClick={() => setShowListingModal(true)} />
             )}
+            {canExport && (
+              <button
+                onClick={() => setTransferMode("export")}
+                className="btn-ghost !py-2 !px-3 !text-[0.65rem] w-full"
+                data-testid={`export-wallet-${tokenId}`}
+              >
+                Move to My Wallet
+              </button>
+            )}
+            {isExported && (
+              <button
+                onClick={() => setTransferMode("import")}
+                className="btn-ghost !py-2 !px-3 !text-[0.65rem] w-full"
+                data-testid={`import-wallet-${tokenId}`}
+              >
+                Return to Gachard
+              </button>
+            )}
             {!isListed && status === "Digital" && (
               tokenId !== null ? (
                 <button
@@ -435,6 +466,21 @@ export default function CardItem({
             setListingId(newListingId);
             setListingPrice(price);
             onStatusChange?.(tokenId!, "Digital");
+          }}
+        />
+      )}
+
+      {/* Move to / return from the user's own wallet (ADR-031) */}
+      {transferMode && cardId && (
+        <PrivyCardTransferModal
+          card={{ cardId, tokenId, templateName }}
+          mode={transferMode}
+          userId={userId}
+          onClose={() => setTransferMode(null)}
+          onDone={() => {
+            const next = transferMode === "export" ? "Exported" : "Digital";
+            setCurrentStatus(next);
+            if (tokenId !== null) onStatusChange?.(tokenId, next);
           }}
         />
       )}

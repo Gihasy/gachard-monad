@@ -182,11 +182,16 @@ Reuse field `status` membuat sebagian besar penjagaan berlaku otomatis.
 | `app/api/dismantle/route.ts:46` | **tidak ada** | Sudah `status !== "Digital"` |
 | `app/api/marketplace/listings/route.ts:36` | **tidak ada** | Sudah `status !== "Digital"` |
 | `app/api/print/route.ts:41` | **tambah guard** | Hanya cek `"Burned"` |
-| `app/api/redeem/route.ts:36` | cek | Hanya cek `"Burned"`. Kartu Exported tidak mungkin Vaulted, tapi tegaskan |
+| `app/api/redeem/route.ts:36` | tambah guard | Hanya cek `"Burned"`. Sudah terblokir oleh syarat `fulfillmentStatus === "Real"`, tapi pesannya menyesatkan |
 | `app/api/cards/route.ts:10` | tambah cabang | `getDisplayStatus` perlu `"Exported"` |
 | `lib/status-map.ts` | tambah entri | `CARD_STATUS_MAP` dan `TX_TYPE_MAP` |
-| `app/api/scan/route.ts` | cek | QR untuk kartu Exported |
-| `app/collection/page.tsx` | UI | Badge, tombol, filter |
+| `app/api/scan/route.ts` | **perbaiki bug** | Kartu Exported ter-flag `warning` seolah palsu. Lihat catatan di bawah |
+| `app/collection/page.tsx` | **tidak ada** | Tombol dan badge sepenuhnya di `CardItem` |
+| `components/CardItem.tsx` | UI | Tombol Move/Return, modal, status |
+
+**Temuan tahap 5, `scan` bukan sekadar "cek" melainkan bug:** kartu Exported menghasilkan `statusCode = 0` (Digital), sementara `card.status` adalah `"Exported"`, sehingga `statusMatch` gagal dan QR memberi flag **`warning`**. Artinya kartu yang sah akan terbaca seperti palsu saat dipindai. Sudah diperbaiki: `Exported` diperlakukan sebagai state yang sah dan statusnya ditampilkan sebagai "In Your Wallet".
+
+**Keputusan PrivyProvider:** dipasang sebagai island di dalam modal transfer, bukan global di `layout.tsx`. Alasannya sama dengan ADR-028: SDK Privy tidak boleh ikut termuat di `/collect` dan halaman lain, dan crash Privy tidak boleh jadi crash global (pernah terjadi, commit `523e55f`). Diverifikasi setelah build: chunk Privy 1,8 MB tidak direferensikan oleh HTML `/collection`, jadi hanya diunduh saat modal dibuka.
 
 **Celah yang ditemukan saat tahap 2:** SDK client v1.93.0 mengekspos `Wallet.address` tetapi **tidak** `Wallet.id`, padahal pengiriman sponsored dari server memerlukan wallet id. Jadi id harus diresolusi server-side lewat `wallets().list({ address })`, lalu disimpan sebagai `users.privyWalletId` agar tidak perlu diresolusi berulang. Integrasi yang sudah live juga menyimpan `privyUserId` sebagai string literal `"connected"`, bukan id Privy sungguhan, jadi field itu tidak bisa dipakai untuk apa pun.
 

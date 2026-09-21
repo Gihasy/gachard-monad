@@ -99,14 +99,25 @@ export async function GET(request: Request) {
 
     // Verification flag — data di MongoDB sudah terkonfirmasi on-chain
     // (diupdate saat mint/print/redeem dikonfirmasi), jadi cukup cek konsistensi status
-    const statusMatch = STATUS_LABELS[statusCode] === card.status || card.status === "Real";
+    // "Exported" is a legitimate state, not a discrepancy. On-chain the card is
+    // still Digital, it is simply held by the owner's own wallet, so without
+    // this it would scan as a warning and look like a forgery (ADR-031).
+    const statusMatch =
+      STATUS_LABELS[statusCode] === card.status ||
+      card.status === "Real" ||
+      card.status === "Exported";
     const verificationFlag = card.status !== undefined && statusMatch ? "verified" : "warning";
 
     return NextResponse.json({
       cardId: card.cardId || null,
       tokenId: card.tokenId ?? null,
       onChain: {
-        status: card.status === "Real" ? "Physical" : friendlyCardStatus(STATUS_LABELS[statusCode] || "Unknown"),
+        status:
+          card.status === "Real"
+            ? "Physical"
+            : card.status === "Exported"
+              ? friendlyCardStatus("Exported")
+              : friendlyCardStatus(STATUS_LABELS[statusCode] || "Unknown"),
         statusCode,
         rarity: RARITY_LABELS[rarityCode] || "Unknown",
         rarityCode,
