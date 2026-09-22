@@ -55,7 +55,8 @@ flowchart LR
         UiCollection["Collection<br/>print · dismantle"]
         UiTrade["Trade<br/>marketplace"]
         UiProfile["Profile<br/>wallet entry point"]
-        UiAdmin["Admin console"]
+        UiWallet["Wallet<br/>hold · move · return · transfer"]
+        UiAdmin["Admin console<br/>flow public · people locked"]
     end
 
     subgraph BE["Backend · API Routes"]
@@ -64,6 +65,8 @@ flowchart LR
         ApiFulfill["POST /api/mint/fulfill<br/>poll · fulfill · recover"]
         ApiCards["GET /api/cards"]
         ApiMarket["/api/marketplace"]
+        ApiPrivy["/api/privy<br/>export · import · send"]
+        ApiRecon["POST /api/privy/reconcile<br/>chain is the truth"]
     end
 
     subgraph AI["AI · MiMo"]
@@ -79,6 +82,12 @@ flowchart LR
         ScPyth["Pyth Entropy<br/>external RNG"]
     end
 
+    subgraph PV["Privy · self-custody"]
+        direction TB
+        PvWallet["embedded wallet<br/>only the user controls it"]
+        PvSign["sponsored signing<br/>Privy pays the gas"]
+    end
+
     subgraph DB["MongoDB Atlas"]
         direction TB
         DbTx[("transactions")]
@@ -92,6 +101,8 @@ flowchart LR
     UiTrade --> ApiMarket
     UiAdmin -. "confirm-all" .-> ApiFulfill
     UiProfile --> DbUsers
+    UiWallet --> ApiPrivy
+    UiWallet -. "Refresh" .-> ApiRecon
 
     ApiMint -- "requestPack" --> ScPack
     ScPack -- "requestV2" --> ScPyth
@@ -106,10 +117,16 @@ flowchart LR
     ApiMarket --> AiInsight
     AiRisk -- "recordVerification" --> ScCard
 
+    ApiPrivy -- "one EIP-712 signature<br/>per selection" --> PvWallet
+    ApiPrivy --> PvSign
+    PvSign -- "safeTransferFrom" --> ScCard
+    ApiRecon -. "reads balances only<br/>never sends" .-> ScCard
+
     style FE fill:#12152e,stroke:#8B5CF6,color:#fff
     style BE fill:#12152e,stroke:#00CCFF,color:#fff
     style AI fill:#12152e,stroke:#FF6BBA,color:#fff
     style CH fill:#12152e,stroke:#00FF88,color:#fff
+    style PV fill:#12152e,stroke:#B8ACFF,color:#fff
     style DB fill:#12152e,stroke:#FFC466,color:#fff
 ```
 
@@ -173,9 +190,26 @@ stateDiagram-v2
     Digital --> Burned: dismantle
     Burned --> [*]
 
+    Digital --> Exported: move to your own wallet
+    Exported --> Digital: return to Gachard
+    Exported --> Released: transfer to an outside address
+    Released --> Exported: sent back in from outside
+
     note right of Vaulted
         Transfers blocked on-chain
         Same token ID throughout
+    end note
+
+    note right of Exported
+        Shown as "In Your Wallet"
+        Not printable, listable
+        or dismantlable while out
+    end note
+
+    note right of Released
+        Shown as "Sent Away"
+        Gachard cannot bring it back
+        Only the chain says it returned
     end note
 
     note right of Burned
@@ -191,6 +225,7 @@ stateDiagram-v2
 - **Print**: Physical card printing (+$14.99 shipping), card locked in vault
 - **Claim Shipping**: User scans QR code on receipt → status becomes "Real"
 - **Redeem**: Enter Card ID + Redeem Code from physical card → back to digital
+- **Move to your own wallet** *(optional)*: Send a card out to a Privy wallet only you control, bring it back, or transfer it anywhere. One signature covers a whole selection (`/wallet`)
 
 ### Additional Features
 - **Scan & Verify**: QR code scanning for card authenticity verification
@@ -285,10 +320,12 @@ limitations of each. The largest decisions also have dedicated specs:
 ```
 gachard-monad/
 ├── frontend/           # Next.js app (single service)
+│   ├── proxy.ts       # The auth gate. Renamed from middleware.ts (Next 16)
 │   ├── app/           # Pages & API routes
 │   ├── components/    # React components
 │   ├── lib/           # Utilities & blockchain
 │   ├── hooks/         # React hooks
+│   ├── scripts/       # suite-api.ts and operational scripts
 │   └── public/        # Static assets
 ├── contracts/         # Solidity smart contracts (Foundry)
 │   ├── src/           # GachardCard.sol + PackEntropy.sol
@@ -297,7 +334,7 @@ gachard-monad/
 ├── docs/              # Documentation
 ├── scripts/           # Deployment scripts
 ├── MEMORY.md          # Project status & working notes (not published)
-├── DECISIONS.md       # Architecture decisions, 30 ADRs
+├── DECISIONS.md       # Architecture decisions, 32 ADRs and their amendments
 ```
 
 ## Deployment
