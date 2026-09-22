@@ -16,7 +16,8 @@
  *
  * Presentation uses the shared vocabulary rather than one-off styling: the
  * violet eyebrow that heads every section in the app, .glass for surfaces,
- * .card-surface with .glass-hover for tiles, .chip for state, .form-field
+ * .card-surface with .glass-hover for settings panels, CardFrame for cards
+ * so they match /collection exactly, .chip for state, .form-field
  * for inputs, and the rarity tokens for card frames. Irreversible actions
  * are the one deliberate deviation: aurora-pink, used nowhere else on this
  * page, so "this cannot be undone" registers before the label is read.
@@ -34,12 +35,10 @@ import {
 } from "@privy-io/react-auth";
 import { privyConfig } from "@/lib/privy-config";
 import {
+  CardFrame,
   Eyebrow,
   EXPLORER,
   MAX_RETURN_BATCH,
-  RARITY,
-  RARITY_COLORS,
-  RARITY_GLOW,
   type WalletCard,
 } from "./shared";
 
@@ -401,88 +400,26 @@ function Workspace() {
                 {cards.map((c) => {
                   const id = c.cardId ?? String(c.tokenId);
                   const on = picked.has(id);
-                  const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
                   const addr = (sendTo[id] ?? "").trim();
                   return (
-                    <li
+                    <CardFrame
                       key={id}
-                      className="card-surface glass-hover p-3 flex flex-col transition-all"
-                      style={{
-                        borderColor: on ? "var(--electric-blue)" : undefined,
-                        background: on ? "rgba(0,204,255,0.07)" : undefined,
-                      }}
+                      card={c}
+                      selected={on}
+                      disabled={busy !== null}
+                      testIdPrefix="wallet-card"
+                      onToggle={() =>
+                        setPicked((s) => {
+                          const next = new Set(s);
+                          if (next.has(id)) next.delete(id);
+                          else next.add(id);
+                          return next;
+                        })
+                      }
                     >
-                      {/* Only the card itself selects. The send-away field
-                          below needs its own clicks. */}
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={on}
-                        aria-label={`Select ${c.templateName ?? `card ${c.tokenId}`}`}
-                        disabled={busy !== null}
-                        onClick={() =>
-                          setPicked((s) => {
-                            const next = new Set(s);
-                            if (next.has(id)) next.delete(id);
-                            else next.add(id);
-                            return next;
-                          })
-                        }
-                        className="text-left w-full disabled:opacity-50"
-                        data-testid={`wallet-pick-${c.tokenId}`}
-                      >
-                      <div
-                        className={`relative w-full rounded-xl overflow-hidden mb-3 bg-white/5 ${on ? RARITY_GLOW[c.rarity] ?? "" : ""}`}
-                        style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
-                        data-testid={`wallet-card-visual-${c.tokenId}`}
-                      >
-                        {c.artworkUrl ? (
-                          <Image
-                            src={c.artworkUrl}
-                            alt={c.templateName ?? c.templateId ?? `Card ${c.tokenId}`}
-                            fill
-                            sizes="(max-width:640px) 45vw, 20vw"
-                            className="object-contain"
-                            style={{ opacity: on ? 1 : 0.78 }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="text-3xl" style={{ color: "var(--border-strong)" }}>
-                              ◆
-                            </span>
-                          </div>
-                        )}
-                        <span
-                          className="absolute top-2 right-2 flex items-center justify-center rounded-md text-[0.7rem] font-semibold"
-                          style={{
-                            width: 20,
-                            height: 20,
-                            background: on ? "var(--electric-blue)" : "rgba(0,0,0,0.45)",
-                            border: `1px solid ${on ? "var(--electric-blue)" : "var(--border-strong)"}`,
-                            color: on ? "#0B0E1A" : "transparent",
-                          }}
-                        >
-                          ✓
-                        </span>
-                      </div>
-
-                      <p
-                        className="text-[0.78rem] leading-tight truncate"
-                        title={c.templateName ?? ""}
-                      >
-                        {c.templateName ?? `Card #${c.tokenId}`}
-                      </p>
-                      <p
-                        className="text-[0.6rem] uppercase tracking-[0.12em]"
-                        style={{ color: colour }}
-                      >
-                        {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
-                      </p>
-                      </button>
-
                       {/* Irreversible, so it is set apart by a rule rather than
                           sitting flush with the reversible action above it. */}
-                      <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                      <div className="mt-2 pt-2 px-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                         <div className="form-field">
                           <input
                             value={sendTo[id] ?? ""}
@@ -513,7 +450,7 @@ function Workspace() {
                           {busy === `send-${id}` ? "Sending…" : "Send away"}
                         </button>
                       </div>
-                    </li>
+                    </CardFrame>
                   );
                 })}
               </ul>

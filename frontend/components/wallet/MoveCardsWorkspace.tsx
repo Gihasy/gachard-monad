@@ -28,12 +28,10 @@ import {
 } from "@/lib/export-intent";
 import { privyConfig } from "@/lib/privy-config";
 import {
+  CardFrame,
   Eyebrow,
   POLL_INTERVAL_MS,
   POLL_MAX_ATTEMPTS,
-  RARITY,
-  RARITY_COLORS,
-  RARITY_GLOW,
   type WalletCard,
 } from "./shared";
 
@@ -377,74 +375,22 @@ function Workspace() {
           <ul className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
             {movable.map((c) => {
               const id = c.cardId!;
-              const on = selected.has(id);
-              const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
               return (
-                <li key={id}>
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={on}
-                    disabled={busy}
-                    onClick={() =>
-                      setSelected((s) => {
-                        const next = new Set(s);
-                        if (next.has(id)) next.delete(id);
-                        else next.add(id);
-                        return next;
-                      })
-                    }
-                    className="card-surface glass-hover p-3 w-full text-left transition-all disabled:opacity-50"
-                    style={{
-                      borderColor: on ? "var(--electric-blue)" : undefined,
-                      background: on ? "rgba(0,204,255,0.07)" : undefined,
-                    }}
-                    data-testid={`move-pick-${c.tokenId}`}
-                  >
-                    <div
-                      className={`relative w-full rounded-xl overflow-hidden mb-3 bg-white/5 ${on ? RARITY_GLOW[c.rarity] ?? "" : ""}`}
-                      style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
-                    >
-                      {c.artworkUrl ? (
-                        <Image
-                          src={c.artworkUrl}
-                          alt={c.templateName ?? `Card ${c.tokenId}`}
-                          fill
-                          sizes="(max-width:640px) 45vw, 18vw"
-                          className="object-contain"
-                          style={{ opacity: on ? 1 : 0.72 }}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="text-3xl" style={{ color: "var(--border-strong)" }}>
-                            ◆
-                          </span>
-                        </div>
-                      )}
-                      <span
-                        className="absolute top-2 right-2 flex items-center justify-center rounded-md text-[0.7rem] font-semibold"
-                        style={{
-                          width: 20,
-                          height: 20,
-                          background: on ? "var(--electric-blue)" : "rgba(0,0,0,0.45)",
-                          border: `1px solid ${on ? "var(--electric-blue)" : "var(--border-strong)"}`,
-                          color: on ? "#0B0E1A" : "transparent",
-                        }}
-                      >
-                        ✓
-                      </span>
-                    </div>
-                    <p className="text-[0.78rem] leading-tight truncate" title={c.templateName ?? ""}>
-                      {c.templateName ?? `Card #${c.tokenId}`}
-                    </p>
-                    <p
-                      className="text-[0.6rem] uppercase tracking-[0.12em]"
-                      style={{ color: colour }}
-                    >
-                      {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
-                    </p>
-                  </button>
-                </li>
+                <CardFrame
+                  key={id}
+                  card={c}
+                  selected={selected.has(id)}
+                  disabled={busy}
+                  testIdPrefix="move"
+                  onToggle={() =>
+                    setSelected((sel) => {
+                      const next = new Set(sel);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    })
+                  }
+                />
               );
             })}
           </ul>
