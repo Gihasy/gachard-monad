@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, Fragment } from "react";
 import PageShell from "@/components/PageShell";
-import { maskEmail } from "@/lib/mask";
 
 type AdminUser = {
   id: string;
@@ -1192,9 +1191,7 @@ function UsersTable({ users }: { users: AdminUser[] }) {
       ) : (
         users.map((u) => (
           <tr key={u.id} style={rowStyle} className="hover:bg-white/[0.03] transition-colors">
-            {/* Masked for display. Search still runs on the real value, so
-                typing a full address finds its row. */}
-            <td className="px-4 py-3.5 text-white/90" title={u.email}>{maskEmail(u.email)}</td>
+            <td className="px-4 py-3.5 text-white/90">{u.email}</td>
             <td className="px-4 py-3.5" style={{ color: "var(--cosmic-violet)" }}>@{u.username}</td>
             <td className="px-4 py-3.5 font-mono text-xs text-white/60">{u.walletAddress}</td>
             <td className="px-4 py-3.5 text-white/50">{new Date(u.createdAt).toLocaleDateString()}</td>
