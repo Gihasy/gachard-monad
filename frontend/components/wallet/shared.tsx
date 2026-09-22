@@ -7,6 +7,7 @@
  */
 import type { ReactNode } from "react";
 import Image from "next/image";
+import Link from "next/link";
 
 export type WalletCard = {
   cardId?: string | null;
@@ -169,5 +170,50 @@ export function CardFrame({
 
       {children}
     </li>
+  );
+}
+
+
+/**
+ * The way into /wallet/move, at the top of /wallet.
+ *
+ * It used to be a small button beside the "Cards in this wallet" heading,
+ * which put the action that fills the page below the thing it fills — on an
+ * empty wallet that reads as a dead end.
+ *
+ * The button says what happens rather than where to click. "Click here" tells
+ * a reader nothing before they commit to it, and this is the start of a path
+ * that ends in a transfer nobody can undo.
+ */
+export function MoveCardsBanner() {
+  return (
+    <section
+      className="glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6"
+      style={{ borderColor: "rgba(0,204,255,0.28)" }}
+      data-testid="wallet-move-banner"
+    >
+      <div className="flex-1 min-w-0">
+        <p
+          className="text-[0.72rem] uppercase tracking-[0.22em] mb-1.5"
+          style={{ color: "var(--cosmic-violet)" }}
+        >
+          From your collection
+        </p>
+        <h2 className="text-base sm:text-lg mb-1.5" style={{ fontFamily: "var(--font-display)" }}>
+          Move cards into this wallet
+        </h2>
+        <p className="text-sm leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
+          Pick the ones you want to hold yourself. They leave Gachard&apos;s custody and land
+          here, and you can send them back whenever you like.
+        </p>
+      </div>
+      <Link
+        href="/wallet/move"
+        className="btn-primary !py-2.5 !px-6 !text-xs shrink-0 text-center"
+        data-testid="wallet-move-cards"
+      >
+        Choose cards
+      </Link>
+    </section>
   );
 }

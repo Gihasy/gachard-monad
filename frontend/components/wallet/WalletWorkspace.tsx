@@ -37,12 +37,24 @@ import { privyConfig } from "@/lib/privy-config";
 import {
   CardFrame,
   Eyebrow,
+  MoveCardsBanner,
   EXPLORER,
   MAX_RETURN_BATCH,
   type WalletCard,
 } from "./shared";
 
 const SIGNER_ID = process.env.NEXT_PUBLIC_PRIVY_SIGNER_ID ?? "";
+
+/**
+ * Whether to offer "Reveal private key".
+ *
+ * Off for now, by request. Kept as a flag rather than deleted because the
+ * capability itself is the point of ADR-028's amendment — the wallet is the
+ * user's and they can walk away with it — and because a revealed key cannot be
+ * un-revealed, so this is a switch worth being able to find and flip
+ * deliberately rather than a feature to rewrite later from memory.
+ */
+const SHOW_KEY_EXPORT = false;
 
 function Workspace() {
   const { ready, authenticated, login, user } = usePrivy();
@@ -234,6 +246,9 @@ function Workspace() {
 
   return (
     <div className="space-y-6">
+      {/* The way in, before the things it fills. See wallet/shared.tsx. */}
+      <MoveCardsBanner />
+
       {/*
         Two columns on wide screens. The settings-shaped blocks are narrow by
         nature and the cards are the reason to be here, so the cards take the
@@ -355,25 +370,13 @@ function Workspace() {
         <section data-testid="wallet-cards">
           <Eyebrow
             right={
-              <span className="flex items-center gap-3">
-                {cards.length > 0 && (
-                  <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
-                    {picked.size > 0
-                      ? `${picked.size} of ${cards.length} selected`
-                      : `${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
-                  </span>
-                )}
-                {/* Always offered, even with the switch off: /wallet/move says
-                    why it cannot proceed and where to change it, which beats a
-                    button that silently is not there. */}
-                <Link
-                  href="/wallet/move"
-                  className="btn-primary !py-2 !px-4 !text-[0.68rem]"
-                  data-testid="wallet-move-cards"
-                >
-                  Move Cards
-                </Link>
-              </span>
+              cards.length > 0 ? (
+                <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
+                  {picked.size > 0
+                    ? `${picked.size} of ${cards.length} selected`
+                    : `${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+                </span>
+              ) : undefined
             }
           >
             Cards in this wallet
@@ -391,7 +394,7 @@ function Workspace() {
                 ◆
               </p>
               <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
-                None yet. Use Move Cards to bring one here.
+                None yet. Choose cards above to bring some here.
               </p>
             </div>
           ) : (
@@ -502,6 +505,7 @@ function Workspace() {
       {/* Full control. Full width rather than in the sidebar: on a phone it
           would otherwise sit between the access card and the cards, putting a
           destructive action in the middle of the reading path. */}
+      {SHOW_KEY_EXPORT && (
       <section
         className="glass p-6"
         style={{ borderColor: "rgba(255,107,186,0.18)" }}
@@ -526,6 +530,7 @@ function Workspace() {
           Reveal private key
         </button>
       </section>
+      )}
 
       {(note || err) && (
         <div
