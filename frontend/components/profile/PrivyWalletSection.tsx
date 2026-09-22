@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   getAccessToken,
   PrivyProvider,
@@ -25,23 +26,24 @@ import {
 import { monadTestnet } from "@/lib/monad-testnet";
 
 /**
- * Privy is named in words rather than with a mark, because the repo has no
- * licensed brand asset and drawing an approximation of someone else's logo
- * would misrepresent it. Drop the real SVG in and swap this if you have one.
+ * The supplied Privy wordmark, used as given: white on transparent, only
+ * scaled. It is someone else's brand, so it is not recoloured or redrawn to
+ * match the Gachard palette.
  */
 function PrivyMark() {
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        className="inline-block w-1.5 h-1.5 rounded-full"
-        style={{ background: "var(--cosmic-violet)", boxShadow: "0 0 8px var(--cosmic-violet)" }}
-      />
-      <span
-        className="text-[0.7rem] tracking-[0.12em]"
-        style={{ color: "var(--text-tertiary)" }}
-      >
-        Secured by <span style={{ color: "var(--cosmic-violet)" }}>Privy</span>
+    <span className="inline-flex items-center gap-2 shrink-0">
+      <span className="text-[0.7rem]" style={{ color: "var(--text-tertiary)" }}>
+        Secured by
       </span>
+      <Image
+        src="/brand/privy.webp"
+        alt="Privy"
+        width={58}
+        height={13}
+        unoptimized
+        className="opacity-80"
+      />
     </span>
   );
 }

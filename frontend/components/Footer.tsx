@@ -1,5 +1,20 @@
 import Link from "next/link";
+import Image from "next/image";
 import Logo from "@/components/Logo";
+
+/**
+ * The chain badge points at the live contract rather than at monad.xyz, so the
+ * claim in the footer is something a reader can check in one click instead of
+ * something they have to take on trust.
+ *
+ * It says "Testnet" out loud. Everything Gachard mints lives on chain 10143,
+ * and a footer that reads "Powered by Monad" without that word invites people
+ * to assume their cards carry mainnet value.
+ */
+const CONTRACT = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS?.trim();
+const EXPLORER = CONTRACT
+  ? `https://testnet.monadvision.com/address/${CONTRACT}`
+  : "https://testnet.monadvision.com";
 
 const productLinks = [
   { label: "Collect", href: "/collect" },
@@ -128,10 +143,39 @@ export default function Footer() {
 
         <div className="hr-glow my-10" />
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-5">
           <p className="text-xs text-white/50">
             &copy; {new Date().getFullYear()} Gachard. All rights reserved.
           </p>
+
+          <a
+            href={EXPLORER}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex items-center gap-2 rounded-full px-3.5 py-2 transition-colors"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+            data-testid="monad-badge"
+            title="View the Gachard contract on MonadVision"
+          >
+            <span className="text-[0.7rem] text-white/45">Built on</span>
+            <Image
+              src="/brand/monad.webp"
+              alt="Monad"
+              width={74}
+              height={14}
+              // Served as-is. The file is already a 6 KB webp, and the
+              // optimizer falls back to JPEG for clients that do not advertise
+              // webp or avif, which flattens the transparency into a box.
+              unoptimized
+              className="opacity-75 group-hover:opacity-100 transition-opacity"
+            />
+            <span className="text-[0.7rem] text-white/45">
+              Testnet <span className="text-white/30 group-hover:text-white/60 transition-colors">&#8599;</span>
+            </span>
+          </a>
         </div>
       </div>
     </footer>
