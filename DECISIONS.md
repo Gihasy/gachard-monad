@@ -6,9 +6,31 @@
 **Reason**: ERC-1155 was chosen for gas-efficient batch operations (mint multiple tokens in a single transaction) and flexibility of multi-token-type in a single contract. **Important note**: although ERC-1155 supports fungible balance (multiple users can hold quantity >1 for the same tokenId), in Gachard each card gets a unique tokenId (one-token-per-instance) to support per-card vault status tracking per ADR-004. Rarity is stored as metadata per tokenId (`cardRarity` mapping), not as grouping of the same tokenId. Open to combination with ERC-721 in production if individual uniqueness is needed (e.g. numbered legendary editions).
 
 ## ADR-002: Wallet (Custodial, Hidden from User)
-**Status**: Accepted
+**Status**: Accepted, **amended 22 September 2026** (see Amendment below; "never see a wallet address" is no longer literally true, and the rule that replaced it is stated here)
 **Decision**: Users log in via Google OAuth; wallet is created automatically by the backend, private key stored on server. Users only know their username `@user`, never see a wallet address.
 **Reason**: Core product philosophy. Blockchain must be completely hidden from end-users for mainstream UX, avoiding Web3/crypto stigma.
+
+**Amendment, 22 September 2026: the boundary is a surface, not a user.**
+
+This ADR says users "never see a wallet address". Since ADR-028 and ADR-031 that is false, and it has been false for longer than the document admitted. The real rule lived only as a comment in `components/wallet/WalletWorkspace.tsx`, which is not where a rule belongs. It is written down here.
+
+**The rule.** The consumer surfaces — `/`, `/collect`, `/collection`, `/play`, `/trade`, `/scan`, `/wishlist` — offer no wallet *action*, for every user, in every state. Not hidden behind a setting: absent. `/wallet` is the one page that is explicit, and `/profile` names Privy only in the "For Advanced Users" section that leads there. Nobody arrives at either by accident.
+
+The word itself survives in exactly one situation, described under **The one exception** below. Everywhere else on those pages it does not appear at all: verified by grep, the seven page files above contain zero occurrences of "wallet".
+
+**Why the euphemism has to stop at that boundary.** Hiding the wallet is right while the wallet is Gachard's responsibility; the user has no decision to make, so the word would only add friction and crypto stigma. Past the Advanced Access switch the responsibility moves to them, and a soft word for something that is now their liability stops being kind. Three concrete failures, not hypothetical:
+
+- **Sending to an outside address.** The user copies it from MetaMask, Rabby or an exchange, and every one of those says *wallet*. A private Gachard word would leave them unable to match the thing on screen to the thing they are pasting into, in the one flow where a mistake costs the card permanently.
+- **The private key screen.** "Reveal private key" has no object without the word. The key to *what*?
+- **The warning itself.** It reads "You become responsible for the wallet." A warning written in a vocabulary only this app uses is not a warning. The same applies when the user asks for help: they need words the rest of the ecosystem understands, or they can only ever explain the problem to us.
+
+**What enforces it.** Not review. `components/CardItem.tsx` has no export code path at all — it was removed, not gated, so no setting or prop can bring the button back. Choosing which cards leave happens only in the "Move cards in" section of `/wallet`. The invariant is greppable: `"Move to My Wallet"` and `export-wallet` appear in zero client bundles after a build, and they should stay at zero.
+
+**What this costs.** A user who wants to move a card must go to `/wallet` to do it; there is no shortcut from the card itself. That is the intended trade. The previous arrangement put an irreversible action on the consumer surface and relied on a switch to keep it out of sight, which left `/collection` one setting away from becoming a crypto page. One deliberate navigation is cheaper than that.
+
+**The one exception: a card that is already out.** Such a card shows the status **In Your Wallet** and a **Manage in Wallet** link to `/wallet`, both on `/collection`. This is wallet vocabulary on a consumer surface and it is deliberate. The alternative is a card that vanishes from the collection with nothing saying where it went, or a status invented to avoid the word, which would leave the user unable to reason about a card they can no longer print, list or dismantle. The word is the smaller harm.
+
+Note what the exception is not: it appears only *after* the user has moved a card, by their own choice, from `/wallet`. It is never the thing that introduces them to the idea.
 
 ## ADR-003: Gas Fee, Platform-Sponsored
 **Status**: Accepted
@@ -184,7 +206,7 @@ The constraint this ADR rests on was retested and no longer holds. `@privy-io/re
 
 **Two runtime differences that cost time, recorded so they are not rediscovered:** `signTypedData` resolves to `{ signature }` in v3 where v1.93.0 resolved to the string, and typecheck cannot catch the difference when the value goes straight into `JSON.stringify`. And the SDK provides no way to attach the `privy-authorization-signature` header, which delegated wallets require: passing it in the rpc params leaves it in the body, passing it through request options never reaches the wire, and both return 401. Sponsored sends therefore call `POST /v1/wallets/{id}/rpc` with `fetch` directly; everything else still goes through the SDK.
 
-**Scope is also wider than this ADR states.** Privy is no longer confined to `/profile`. It now has its own page at `/wallet`, and `/collection` carries an export entry point. Both mount their own `PrivyProvider` as islands rather than a global one, so the isolation this ADR was built to protect still holds: the SDK never loads on pack opening, and verified after build, its chunk is absent from the prerendered HTML of both pages.
+**Scope is also wider than this ADR states.** Privy is no longer confined to `/profile`. It now has its own page at `/wallet`. Both pages mount their own `PrivyProvider` as islands rather than a global one, so the isolation this ADR was built to protect still holds: the SDK never loads on pack opening, and verified after build, its chunk is absent from the prerendered HTML of both pages. `/collection` briefly carried a per-card export button as well; it was removed on 22 September 2026 and the reasoning is recorded in the amendment to ADR-002.
 
 ## ADR-029: Pyth Entropy for Provably Fair Pack Randomness
 **Status**: Accepted
