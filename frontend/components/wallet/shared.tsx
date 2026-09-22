@@ -50,6 +50,33 @@ export const MAX_RETURN_BATCH = 20;
 export const POLL_INTERVAL_MS = 3000;
 export const POLL_MAX_ATTEMPTS = 20;
 
+/**
+ * The supplied Privy wordmark, used as given: white on transparent, only
+ * scaled. It is someone else's brand, so it is not recoloured or redrawn to
+ * match the Gachard palette.
+ *
+ * Shared because /profile and /wallet both credit Privy and should credit it
+ * identically; two copies of a third party's mark is two chances to drift away
+ * from what they actually look like.
+ */
+export function PrivyMark() {
+  return (
+    <span className="inline-flex items-center gap-2 shrink-0">
+      <span className="text-[0.7rem]" style={{ color: "var(--text-tertiary)" }}>
+        Secured by
+      </span>
+      <Image
+        src="/brand/privy.webp"
+        alt="Privy"
+        width={58}
+        height={13}
+        unoptimized
+        className="opacity-80"
+      />
+    </span>
+  );
+}
+
 /** The violet section heading used across the app. */
 export function Eyebrow({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (

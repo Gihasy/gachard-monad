@@ -37,6 +37,7 @@ import { privyConfig } from "@/lib/privy-config";
 import {
   CardFrame,
   Eyebrow,
+  PrivyMark,
   TransferDialog,
   WalletAddress,
   MoveCardsBanner,
@@ -282,6 +283,14 @@ function Workspace() {
             Your wallet
           </Eyebrow>
           <WalletAddress address={address} />
+          {/* Who actually holds this. It is the question the page exists to
+              answer and, until now, the one page in the app that did not name
+              anyone — the footer credits Monad and /profile credits Privy.
+              Below the address rather than beside the heading, where it would
+              compete with the explorer link. */}
+          <div className="mt-3 flex justify-end">
+            <PrivyMark />
+          </div>
         </section>
 
         {/* Permission */}

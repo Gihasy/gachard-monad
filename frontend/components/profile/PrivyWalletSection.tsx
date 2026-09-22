@@ -38,7 +38,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import Image from "next/image";
 import {
   getAccessToken,
   PrivyProvider,
@@ -46,29 +45,7 @@ import {
   useWallets,
 } from "@privy-io/react-auth";
 import { privyConfig } from "@/lib/privy-config";
-
-/**
- * The supplied Privy wordmark, used as given: white on transparent, only
- * scaled. It is someone else's brand, so it is not recoloured or redrawn to
- * match the Gachard palette.
- */
-function PrivyMark() {
-  return (
-    <span className="inline-flex items-center gap-2 shrink-0">
-      <span className="text-[0.7rem]" style={{ color: "var(--text-tertiary)" }}>
-        Secured by
-      </span>
-      <Image
-        src="/brand/privy.webp"
-        alt="Privy"
-        width={58}
-        height={13}
-        unoptimized
-        className="opacity-80"
-      />
-    </span>
-  );
-}
+import { PrivyMark } from "@/components/wallet/shared";
 
 /**
  * Everything that is hard or impossible to undo, said before it is offered.
