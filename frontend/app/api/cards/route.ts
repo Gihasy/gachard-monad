@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
 import { confirmTransaction } from "@/lib/transactions";
 import { getAuthenticatedUser } from "@/lib/session";
-import { reconcileExportedCards } from "@/lib/privy-reconcile";
+import { reconcileStuckTransfers } from "@/lib/privy-reconcile";
 
 /**
  * Derive user-facing display status from fulfillmentStatus.
@@ -55,12 +55,20 @@ export async function GET(request: Request) {
     // only moves MongoDB towards what the chain already says and never sends a
     // transaction, so running it here is safe and idempotent.
     //
-    // Bounded to three: each card costs at least one RPC read and this route
-    // runs under the same maxDuration as the rest (ADR-018). Failures are
-    // swallowed on purpose — a repair that cannot run is not a reason to fail
-    // a user's collection.
+    // Narrow, and on a leash. Only cards that are mid-flight are considered —
+    // an exported card nobody is moving needs no repair — and the whole thing
+    // is abandoned after two and a half seconds.
+    //
+    // Both limits are the same lesson learned the hard way: the first version
+    // scanned every exported card and took 13-16 seconds, while /collection
+    // gives up after six and shows an empty vault. A repair that breaks the
+    // page it was meant to fix is worse than no repair, and there is always a
+    // next request.
     try {
-      await reconcileExportedCards(3, user.walletAddress);
+      await Promise.race([
+        reconcileStuckTransfers(2, user.walletAddress),
+        new Promise((resolve) => setTimeout(resolve, 2500)),
+      ]);
     } catch (e) {
       console.warn("[cards] privy reconcile skipped:", e);
     }

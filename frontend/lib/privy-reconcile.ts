@@ -223,6 +223,47 @@ export async function reconcileExportedCard(card: CardDoc): Promise<ReconcileRes
  * cards are keyed to their owner by `ownerAddress` — so every scoped call
  * matched nothing and silently reconciled zero cards.
  */
+/**
+ * Reconcile only the cards that look stuck, for one owner.
+ *
+ * reconcileExportedCards scans anything that could conceivably have drifted,
+ * which is right for a sweep and wrong for a page load: every candidate costs
+ * at least one RPC read, and a user holding three exported cards paid for all
+ * three on every request. Measured at 13-16 seconds against /api/cards, while
+ * /collection gives up after six and renders an empty vault.
+ *
+ * "Stuck" is narrower than "exported". A card sitting happily in someone's
+ * wallet needs no repair; the ones that do are mid-flight — an import that was
+ * started and never settled, or a transfer whose post-write was lost.
+ */
+export async function reconcileStuckTransfers(
+  limit: number,
+  ownerAddress: string
+): Promise<ReconcileResult[]> {
+  const cards = await getCollection("cards");
+  const candidates = (await cards
+    .find({
+      ownerAddress,
+      $or: [
+        { importTxId: { $exists: true }, importTxHash: { $exists: false } },
+        { exportPending: true },
+      ],
+    })
+    .sort({ updatedAt: 1 })
+    .limit(limit)
+    .toArray()) as unknown as CardDoc[];
+
+  const results: ReconcileResult[] = [];
+  for (const card of candidates) {
+    try {
+      results.push(await reconcileExportedCard(card));
+    } catch (e) {
+      console.warn(`[privy-reconcile] ${card.cardId ?? card._id}: `, e);
+    }
+  }
+  return results;
+}
+
 export async function reconcileExportedCards(
   limit = 10,
   ownerAddress?: string
