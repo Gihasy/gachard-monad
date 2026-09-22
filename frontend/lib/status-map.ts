@@ -15,6 +15,7 @@ const CARD_STATUS_MAP: Record<string, string> = {
   Vaulted: "Print Requested",
   Real: "Physical",
   Exported: "In Your Wallet",
+  Released: "Sent Away",
 };
 
 const TX_TYPE_MAP: Record<string, string> = {

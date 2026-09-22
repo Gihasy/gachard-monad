@@ -97,6 +97,13 @@ export default function CardItem({
   const isShipping = currentStatus === "Shipping";
   const isPhysical = currentStatus === "Physical";
   const isExported = currentStatus === "In Your Wallet";
+  /**
+   * Sent to an address outside Gachard. Every action is already off, because
+   * they all test for "Digital" — but the badge is not, and the fallthrough
+   * colour is the same electric blue a Digital card wears. A card that is gone
+   * for good should not be the brightest thing on the shelf.
+   */
+  const isReleased = currentStatus === "Sent Away";
 
   const isFormValid =
     form.recipientName.trim() &&
@@ -302,7 +309,9 @@ export default function CardItem({
             <span
               className="text-[0.55rem] uppercase tracking-widest px-1.5 py-0.5 rounded whitespace-nowrap"
               style={{
-                background: isListed
+                background: isReleased
+                  ? "rgba(255,255,255,0.06)"
+                  : isListed
                   ? "rgba(255,196,102,0.15)"
                   : isPhysical
                   ? "rgba(0,255,136,0.15)"
@@ -311,7 +320,9 @@ export default function CardItem({
                   : isInProgress
                   ? "rgba(255,196,102,0.15)"
                   : "rgba(0,204,255,0.15)",
-                color: isListed
+                color: isReleased
+                  ? "var(--text-tertiary)"
+                  : isListed
                   ? "var(--aurora-gold)"
                   : isPhysical
                   ? "#00ff88"
@@ -354,6 +365,18 @@ export default function CardItem({
             )}
             {!isListed && canList && (
               <SellButton onClick={() => setShowListingModal(true)} />
+            )}
+            {isReleased && (
+              // Without this the tile is simply empty below the badge, which
+              // reads as a card still loading rather than one that has left.
+              <p
+                className="text-[0.6rem] leading-relaxed px-1 py-2"
+                style={{ color: "var(--text-tertiary)" }}
+                data-testid={`released-note-${tokenId}`}
+              >
+                You sent this card to an address outside Gachard. It cannot be printed, listed or
+                brought back.
+              </p>
             )}
             {isExported && (
               // The one wallet word left on this surface, and only on a card

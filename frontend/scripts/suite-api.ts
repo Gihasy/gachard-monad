@@ -65,6 +65,11 @@ function group(title: string) { results.push(`\n${title}`); }
     { cardId: "suite-2", tokenId: 970002, templateId: tpl[2].templateId, rarity: 2, ownerAddress: OWNER, status: "Digital", fulfillmentStatus: null, isListed: true, listingId: "suite-l1", viewed: true, createdAt: now },
     { cardId: "suite-4", tokenId: 970004, templateId: tpl[0].templateId, rarity: 0, ownerAddress: OWNER, status: "Digital", fulfillmentStatus: null, isListed: false, viewed: true, createdAt: now },
     { cardId: "suite-3", tokenId: 970003, templateId: tpl[3].templateId, rarity: 3, ownerAddress: OWNER, status: "Exported", privyWalletAddress: privyWallet.address, fulfillmentStatus: null, isListed: false, viewed: true, createdAt: now },
+    // Sent to an address outside Gachard. It has no fulfillmentStatus, which
+    // is exactly the shape that used to fall through getDisplayStatus to
+    // "Digital" and offer List, Print and Dismantle on a card the platform no
+    // longer holds.
+    { cardId: "suite-5", tokenId: 970005, templateId: tpl[0].templateId, rarity: 0, ownerAddress: OWNER, status: "Released", releasedTo: "0x000000000000000000000000000000000000dead", releaseTxId: "suite-release", fulfillmentStatus: null, isListed: false, viewed: true, createdAt: now },
   ]);
 
   const ts = Math.floor(Date.now() / 1000);
@@ -246,11 +251,19 @@ function group(title: string) { results.push(`\n${title}`); }
   group("J. Removed surfaces");
   check("the advanced-access endpoint is gone", (await get("/api/user/advanced", session)).status === 404);
 
-  // ================= K. scanned QR payloads =================
+  // ================= K2. a released card =================
+  group("K. Released cards");
+  const cardsBody = await (await get("/api/cards", session)).json();
+  const released = (cardsBody.cards ?? []).find((c: Record<string, unknown>) => c.cardId === "suite-5");
+  check("a released card is still listed", !!released);
+  check("it does not claim to be Digital", released?.displayStatus !== "Digital", String(released?.displayStatus));
+  check("it reads as Sent Away", released?.displayStatus === "Sent Away", String(released?.displayStatus));
+
+  // ================= L. scanned QR payloads =================
   // Both QR codes hold a URL, not an id. Claim Shipping compared the whole URL
   // against a bare claimId and refused every card; these are the shapes a
   // scanner actually produces.
-  group("K. Scanned QR payloads");
+  group("L. Scanned QR payloads");
   const ORIGIN = "https://gachard-monad.vercel.app";
   const sc = (t: string) => parseScannedCode(t);
   check("a claim QR yields its claimId", sc(`${ORIGIN}/scan?claimId=1fa28e07`).claimId === "1fa28e07");

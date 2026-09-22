@@ -40,6 +40,8 @@ interface CardDoc {
   exportPending?: boolean;
   importTxId?: string;
   importTxHash?: string;
+  releaseTxId?: string;
+  releaseTxHash?: string;
 }
 
 const CLEAR_EXPORT_CYCLE = {
@@ -79,6 +81,34 @@ async function settleImportTransaction(importTxId: string | undefined, tokenId: 
   await txs.findOneAndUpdate(
     { type: "privy_import", tokenId, status: "pending" },
     { $set: { status: "confirmed", updatedAt: now } },
+    { sort: { createdAt: -1 } }
+  );
+}
+
+/**
+ * Fill in a sponsored send's hash and mark its history row confirmed.
+ *
+ * The send route writes `privyTxId` and `txHash: null`, because Privy answers
+ * with a transaction id and the hash does not exist until the bundler lands
+ * it. Nothing ever came back for it: `releaseTxId` was written in one place
+ * and read in none, so the row said "Processing" for good while the card had
+ * long since arrived at its destination.
+ */
+async function settleSendTransaction(releaseTxId: string, tokenId: number, hash: string) {
+  const txs = await getCollection("transactions");
+  const now = new Date().toISOString();
+
+  const byId = await txs.updateOne(
+    { privyTxId: releaseTxId, status: "pending" },
+    { $set: { status: "confirmed", txHash: hash, updatedAt: now } }
+  );
+  if (byId.matchedCount > 0) return;
+
+  // findOneAndUpdate for the sort, as with imports: without one an older
+  // abandoned attempt could be settled instead of this transfer.
+  await txs.findOneAndUpdate(
+    { type: "privy_send", tokenId, status: "pending" },
+    { $set: { status: "confirmed", txHash: hash, updatedAt: now } },
     { sort: { createdAt: -1 } }
   );
 }
@@ -204,6 +234,64 @@ export async function reconcileExportedCard(card: CardDoc): Promise<ReconcileRes
     return { cardId: label, changed: true, from, to: "Digital", reason: "export never landed, marker cleared" };
   }
 
+  // A card sent to an address outside Gachard. Neither of our wallets holds
+  // it, which is the correct and final state — but the transfer's hash was
+  // never collected, so this has to be handled before the "neither wallet"
+  // fallthrough below, which would otherwise read a successful transfer as a
+  // possible burn.
+  if (card.status === "Released" && card.releaseTxId && !card.releaseTxHash) {
+    let rel;
+    try {
+      rel = await getSponsoredStatus(card.releaseTxId);
+    } catch (e) {
+      // Privy does not recognise the id. Nothing can be settled from it, and
+      // retrying forever costs an API call per sweep, so record that the hash
+      // is unobtainable and stop asking.
+      if (/404|not found/i.test(e instanceof Error ? e.message : String(e))) {
+        await cards.updateOne(
+          { _id: card._id },
+          { $set: { releaseStatus: "unknown", updatedAt: new Date().toISOString() }, $unset: { releaseTxId: "" } }
+        );
+        return { cardId: label, changed: true, from, to: from, reason: "release id unknown to Privy, stopped asking" };
+      }
+      throw e;
+    }
+
+    if (rel.confirmed && rel.hash) {
+      await cards.updateOne(
+        { _id: card._id },
+        { $set: { releaseTxHash: rel.hash, releaseStatus: "confirmed", updatedAt: new Date().toISOString() } }
+      );
+      await settleSendTransaction(card.releaseTxId, tokenId, rel.hash);
+      return { cardId: label, changed: true, from, to: from, reason: "release settled" };
+    }
+
+    if (rel.failed) {
+      // The transfer never landed, so the card never left. Marking it Released
+      // was premature — the send route writes that status before the bundler
+      // has confirmed anything — and leaving it there strands a card the user
+      // still owns behind a status that says it is gone.
+      if (privyHolds) {
+        const txs = await getCollection("transactions");
+        await txs.updateOne(
+          { privyTxId: card.releaseTxId, status: "pending" },
+          { $set: { status: "failed", updatedAt: new Date().toISOString() } }
+        );
+        await cards.updateOne(
+          { _id: card._id },
+          {
+            $set: { status: "Exported", updatedAt: new Date().toISOString() },
+            $unset: { releaseTxId: "", releasedTo: "", releasedAt: "" },
+          }
+        );
+        return { cardId: label, changed: true, from, to: "Exported", reason: "release failed, card is still in the wallet" };
+      }
+      return noop("release failed but the wallet does not hold the token either");
+    }
+
+    return noop(`release still ${rel.status}`);
+  }
+
   // Neither wallet holds it. Most likely burned; say so rather than guessing.
   if (!custodialHolds && !privyHolds) {
     return noop("token held by neither wallet, left alone");
@@ -246,6 +334,7 @@ export async function reconcileStuckTransfers(
       ownerAddress,
       $or: [
         { importTxId: { $exists: true }, importTxHash: { $exists: false } },
+        { releaseTxId: { $exists: true }, releaseTxHash: { $exists: false } },
         { exportPending: true },
       ],
     })
@@ -276,6 +365,7 @@ export async function reconcileExportedCards(
     $or: [
       { status: "Exported" },
       { importTxId: { $exists: true } },
+      { releaseTxId: { $exists: true }, releaseTxHash: { $exists: false } },
       { exportPending: true },
       { privyWalletAddress: { $exists: true } },
     ],

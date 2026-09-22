@@ -10,6 +10,12 @@ import { reconcileStuckTransfers } from "@/lib/privy-reconcile";
  */
 function getDisplayStatus(fulfillmentStatus: string | null | undefined, cardStatus?: string): string {
   if (cardStatus === "Burned") return "Burned";
+  // Sent to an address outside Gachard and not coming back. There was no case
+  // for this, so a released card fell through to the final `return "Digital"`
+  // and appeared in the collection as an ordinary card — with List, Print and
+  // Dismantle offered on something the platform no longer holds. Every one of
+  // those would have failed at the contract.
+  if (cardStatus === "Released") return "Sent Away";
   // Exported outranks fulfillmentStatus: the card is not in the platform's
   // hands at all, so nothing about the printing flow applies to it.
   if (cardStatus === "Exported") return "In Your Wallet";
