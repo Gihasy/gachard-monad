@@ -7,6 +7,9 @@ import Link from "next/link";
 import PageShell from "@/components/PageShell";
 import { friendlyTxType } from "@/lib/status-map";
 import CardItem from "@/components/CardItem";
+// Lazy: the dialog only exists once someone asks to redeem, which most people
+// never do.
+const RedeemModal = dynamic(() => import("@/components/profile/RedeemModal"), { ssr: false });
 
 const PrivySection = dynamic(() => import("@/components/profile/PrivyWalletSection"), { ssr: false });
 
@@ -42,10 +45,7 @@ export default function Profil() {
   const [balance, setBalance] = useState<number | null>(null);
   const [crystalBalance, setCrystalBalance] = useState<number | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
-  const [redeemCardId, setRedeemCardId] = useState("");
-  const [redeemCode, setRedeemCode] = useState("");
-  const [redeemLoading, setRedeemLoading] = useState(false);
-  const [redeemMessage, setRedeemMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [redeemOpen, setRedeemOpen] = useState(false);
   const [page, setPage] = useState(0);
   const CARDS_PER_PAGE = 6;
   type Tx = {
@@ -159,41 +159,6 @@ export default function Profil() {
     router.push("/");
   };
 
-  const handleRedeem = async () => {
-    if (!user || !redeemCardId.trim() || !redeemCode.trim()) return;
-    setRedeemLoading(true);
-    setRedeemMessage(null);
-    try {
-      const res = await fetch("/api/redeem", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          cardId: redeemCardId.trim().toLowerCase(),
-          code: redeemCode.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setRedeemMessage({
-          text: `Card #${redeemCardId} redeemed successfully! It's now in your collection.`,
-          ok: true,
-        });
-        setRedeemCardId("");
-        setRedeemCode("");
-        fetch("/api/cards", { credentials: "include" })
-          .then((r) => r.json())
-          .then((d: { cards?: Card[] }) => setCards(d.cards ?? []))
-          .catch(() => {});
-      } else {
-        setRedeemMessage({ text: data.error || "Redeem failed", ok: false });
-      }
-    } catch {
-      setRedeemMessage({ text: "Network error", ok: false });
-    } finally {
-      setRedeemLoading(false);
-    }
-  };
 
   if (!ready || !user) return null;
 
@@ -362,82 +327,36 @@ export default function Profil() {
             </div>
           </div>
 
-          {/* Redeem Card */}
+          {/* Redeem. A dialog rather than a form left open: most people do
+              this once, if ever, and it was taking permanent sidebar space
+              from the collection. */}
           <div
             className="glass p-4 sm:p-6"
             data-testid="profile-redeem"
             style={{ borderColor: "rgba(0,255,136,0.2)" }}
           >
             <p
-              className="text-[0.65rem] sm:text-[0.72rem] uppercase tracking-[0.22em] mb-2 sm:mb-3"
+              className="text-[0.65rem] sm:text-[0.72rem] uppercase tracking-[0.22em] mb-2"
               style={{ color: "#00ff88" }}
             >
               Redeem a Physical Card
             </p>
-            <p className="text-[0.7rem] sm:text-xs text-white/50 mb-3 sm:mb-4">
-              Received a physical card? Enter the Card ID and the redeem code printed on the card to transfer ownership to your account.
+            <p className="text-[0.7rem] sm:text-xs text-white/50 mb-4">
+              Received a printed card? Its Card ID and redeem code transfer ownership to your
+              account.
             </p>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[0.65rem] uppercase tracking-widest text-white/40 mb-1.5">
-                  Card ID
-                </label>
-                <div
-                  className="flex items-center bg-white/[0.04] border border-white/[0.1] rounded-xl px-4 py-2.5"
-                >
-                  <span className="text-sm text-white/40 mr-1 font-mono">#</span>
-                  <input
-                    type="text"
-                    value={redeemCardId}
-                    onChange={(e) => setRedeemCardId(e.target.value)}
-                    placeholder="8a866"
-                    className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 outline-none"
-                    data-testid="redeem-card-input"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[0.65rem] uppercase tracking-widest text-white/40 mb-1.5">
-                  Redeem Code
-                </label>
-                <input
-                  type="text"
-                  value={redeemCode}
-                  onChange={(e) => setRedeemCode(e.target.value)}
-                  placeholder="e.g. xIdVoe2A0TWZvNOR"
-                  className="w-full bg-white/[0.04] border border-white/[0.1] rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/30 outline-none focus:border-white/30 font-mono"
-                  data-testid="redeem-code-input"
-                />
-              </div>
-              <button
-                onClick={handleRedeem}
-                disabled={redeemLoading || !redeemCardId.trim() || !redeemCode.trim()}
-                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50"
-                style={{
-                  background: "linear-gradient(135deg, rgba(0,255,136,0.2), rgba(0,204,255,0.15))",
-                  border: "1px solid rgba(0,255,136,0.4)",
-                  color: "#00ff88",
-                }}
-                data-testid="redeem-submit-btn"
-              >
-                {redeemLoading ? "Redeeming..." : "Redeem Card"}
-              </button>
-            </div>
-            {redeemMessage && (
-              <div
-                className="mt-3 p-3 rounded-xl text-sm"
-                style={{
-                  background: redeemMessage.ok ? "rgba(0,255,136,0.08)" : "rgba(255,107,186,0.08)",
-                  border: redeemMessage.ok
-                    ? "1px solid rgba(0,255,136,0.3)"
-                    : "1px solid rgba(255,107,186,0.3)",
-                  color: redeemMessage.ok ? "#00ff88" : "#ff6bba",
-                }}
-                data-testid="redeem-message"
-              >
-                {redeemMessage.text}
-              </div>
-            )}
+            <button
+              onClick={() => setRedeemOpen(true)}
+              className="w-full py-2.5 rounded-xl text-sm font-medium transition-all"
+              style={{
+                background: "linear-gradient(135deg, rgba(0,255,136,0.2), rgba(0,204,255,0.15))",
+                border: "1px solid rgba(0,255,136,0.4)",
+                color: "#00ff88",
+              }}
+              data-testid="redeem-open-btn"
+            >
+              Redeem a card
+            </button>
           </div>
         </div>
 
@@ -680,6 +599,13 @@ export default function Profil() {
             </div>
           </div>
         </div>
+      )}
+
+      {redeemOpen && (
+        <RedeemModal
+          onClose={() => setRedeemOpen(false)}
+          onRedeemed={(next) => setCards(next)}
+        />
       )}
 
       {/* Advanced Users — Privy self-custody wallet (supplementary, at bottom) */}
