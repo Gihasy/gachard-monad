@@ -12,6 +12,7 @@
  * SDK never loads on pack opening or anywhere else.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import {
   PrivyProvider,
   useExportWallet,
@@ -27,12 +28,23 @@ const EXPLORER = "https://testnet.monadvision.com/address/";
 type WalletCard = {
   cardId?: string | null;
   tokenId: number | null;
+  templateId?: string;
   templateName?: string;
+  artworkUrl?: string;
   rarity: number;
   displayStatus?: string;
 };
 
 const RARITY = ["Common", "Rare", "Epic", "Legendary"];
+// Same tokens and glow classes the collection grid uses, so a card looks
+// like itself wherever it is shown.
+const RARITY_COLORS = [
+  "var(--rarity-common)",
+  "var(--rarity-rare)",
+  "var(--rarity-epic)",
+  "var(--rarity-legendary)",
+];
+const RARITY_GLOW = ["", "glow-rare", "glow-epic", "glow-legendary"];
 
 function busyLabel(a: string | null) {
   return a === "claim" ? "Finishing…" : a === "return" ? "Returning…" : a === "send" ? "Sending…" : "…";
@@ -206,64 +218,81 @@ function Workspace() {
             None yet. Move a card here from your collection.
           </p>
         ) : (
-          <ul className="space-y-3">
+          <>
+          <ul className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {cards.map((c) => {
               const id = c.cardId ?? String(c.tokenId);
+              const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
               return (
-                <li key={id} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)" }}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm">{c.templateName ?? `Card #${c.tokenId}`}</p>
-                      <p className="text-[0.65rem] text-white/40">
-                        {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
-                      </p>
-                    </div>
+                <li key={id} className="flex flex-col">
+                  <div
+                    className={`relative w-full rounded-xl overflow-hidden mb-2 bg-white/5 ${RARITY_GLOW[c.rarity] ?? ""}`}
+                    style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
+                    data-testid={`wallet-card-visual-${c.tokenId}`}
+                  >
+                    {c.artworkUrl ? (
+                      <Image
+                        src={c.artworkUrl}
+                        alt={c.templateName ?? c.templateId ?? `Card ${c.tokenId}`}
+                        fill
+                        sizes="(max-width:640px) 45vw, 20vw"
+                        className="object-contain"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="text-3xl text-white/30">◆</span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <button
-                      onClick={() =>
-                        act(`return-${id}`, post("/api/privy/import", { cardId: c.cardId }), "Coming back to your collection.")
-                      }
-                      disabled={busy !== null}
-                      className="btn-ghost !py-1.5 !px-3 !text-[0.65rem] disabled:opacity-50"
-                      data-testid={`wallet-return-${c.tokenId}`}
-                    >
-                      {busy === `return-${id}` ? busyLabel("return") : "Return to Gachard"}
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <input
-                      value={sendTo[id] ?? ""}
-                      onChange={(e) => setSendTo((s) => ({ ...s, [id]: e.target.value }))}
-                      placeholder="Send to address (0x…)"
-                      className="flex-1 min-w-[180px] text-[0.7rem] rounded-lg px-2 py-1.5 font-mono"
-                      style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)" }}
-                      data-testid={`wallet-send-input-${c.tokenId}`}
-                    />
-                    <button
-                      onClick={() =>
-                        act(
-                          `send-${id}`,
-                          post("/api/privy/send", { cardId: c.cardId, to: sendTo[id] }),
-                          "Sent. This card has left Gachard for good."
-                        )
-                      }
-                      disabled={busy !== null || !(sendTo[id] ?? "").trim()}
-                      className="btn-ghost !py-1.5 !px-3 !text-[0.65rem] disabled:opacity-50"
-                      data-testid={`wallet-send-${c.tokenId}`}
-                    >
-                      {busy === `send-${id}` ? busyLabel("send") : "Send"}
-                    </button>
-                  </div>
-                  <p className="text-[0.6rem] text-white/30 mt-1.5">
-                    Sending elsewhere is permanent. Gachard cannot bring it back.
+                  <p className="text-[0.75rem] leading-tight truncate" title={c.templateName ?? ""}>
+                    {c.templateName ?? `Card #${c.tokenId}`}
                   </p>
+                  <p className="text-[0.6rem] mb-2" style={{ color: colour }}>
+                    {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
+                  </p>
+
+                  <button
+                    onClick={() =>
+                      act(`return-${id}`, post("/api/privy/import", { cardId: c.cardId }), "Coming back to your collection.")
+                    }
+                    disabled={busy !== null}
+                    className="btn-ghost !py-1.5 !px-2 !text-[0.6rem] w-full disabled:opacity-50"
+                    data-testid={`wallet-return-${c.tokenId}`}
+                  >
+                    {busy === `return-${id}` ? busyLabel("return") : "Return to Gachard"}
+                  </button>
+
+                  <input
+                    value={sendTo[id] ?? ""}
+                    onChange={(e) => setSendTo((s) => ({ ...s, [id]: e.target.value }))}
+                    placeholder="0x… send elsewhere"
+                    className="w-full text-[0.6rem] rounded-lg px-2 py-1.5 font-mono mt-1.5"
+                    style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)" }}
+                    data-testid={`wallet-send-input-${c.tokenId}`}
+                  />
+                  <button
+                    onClick={() =>
+                      act(
+                        `send-${id}`,
+                        post("/api/privy/send", { cardId: c.cardId, to: sendTo[id] }),
+                        "Sent. This card has left Gachard for good."
+                      )
+                    }
+                    disabled={busy !== null || !(sendTo[id] ?? "").trim()}
+                    className="btn-ghost !py-1.5 !px-2 !text-[0.6rem] w-full mt-1.5 disabled:opacity-50"
+                    data-testid={`wallet-send-${c.tokenId}`}
+                  >
+                    {busy === `send-${id}` ? busyLabel("send") : "Send"}
+                  </button>
                 </li>
               );
             })}
           </ul>
+          <p className="text-[0.6rem] text-white/30">
+            Sending a card elsewhere is permanent. Gachard cannot bring it back.
+          </p>
+          </>
         )}
       </div>
 
