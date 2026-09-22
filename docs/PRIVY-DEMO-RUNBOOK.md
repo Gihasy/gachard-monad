@@ -2,9 +2,9 @@
 
 ## Status: SIAP DIPAKAI (tahap 7 dari `docs/PRIVY-BEYOND-AUTH-SPEC.md`)
 
-*Dibuat: 22 September 2026. Diperbarui setelah pindah ke SDK v3 dan halaman `/wallet`.*
+*Dibuat 22 September 2026, diperbarui di hari yang sama setelah alurnya berubah cukup banyak: pemilihan kartu pindah ke `/wallet/move`, satu tanda tangan kini menaungi seluruh seleksi, "Send away" jadi **Transfer** dengan dialog dua langkah, dan reveal private key dimatikan.*
 *Deadline bounty: 14 Oktober 2026, 10:59 GMT+7*
-*Keputusan: ADR-031. **ADR-028 perlu diamandemen**, alasan pinning-nya sudah tidak berlaku.*
+*Keputusan: ADR-031. ADR-028 sudah diamandemen.*
 
 ---
 
@@ -28,11 +28,12 @@ Empat momen di Bagian 4 yang menopang seluruh argumen. Sisanya konteks.
 
 **Belum pernah dijalankan sungguhan:**
 
-- **Send ke alamat lain** (`/wallet`)
-- **Reveal private key** (`/wallet`)
+- **Transfer ke alamat lain** (`/wallet`)
 - **Withdraw access**, yaitu pencabutan delegasi
 
-Ketiganya dipakai di rekaman. **Coba satu kali sebelum merekam.** Untuk Send, pakai alamat yang Anda kendalikan sendiri, karena kartunya benar-benar pergi dan tidak bisa ditarik kembali.
+Keduanya dipakai di rekaman. **Coba satu kali sebelum merekam.** Untuk Transfer, pakai alamat yang Anda kendalikan sendiri, karena kartunya benar-benar pergi dan tidak bisa ditarik kembali.
+
+**Reveal private key sudah tidak ada di UI.** Kemampuannya tetap ada di v3.44.0 dan kodenya masih di repo, tapi dimatikan lewat sebuah flag — kunci yang sudah terlihat tidak bisa ditarik kembali. Jangan merencanakan rekaman di sekitarnya, dan jangan mengklaimnya sebagai fitur yang berjalan.
 
 ---
 
@@ -45,13 +46,14 @@ Urutan ini sengaja: yang paling mungkin gagal didahulukan.
 | 1 | Buka `/wallet` | Alamat wallet muncul, bukan tombol "Set up" |
 | 2 | Cocokkan alamat itu di Privy Dashboard → Wallets | Alamatnya ada di daftar |
 | 3 | Lihat kartu "Gachard access" | Berlabel **Allowed** |
-| 4 | `/collection` → satu kartu Digital → **Move to My Wallet** | Modal Privy muncul, tanda tangan diterima |
-| 5 | Kembali ke `/wallet` | Kartunya muncul di "Cards in this wallet" |
-| 6 | **Return to Gachard** | Kartu kembali Digital di `/collection` |
-| 7 | Ulangi export, lalu **Send** ke alamat milik Anda sendiri | Kartu berpindah, status jadi Released |
-| 8 | **Reveal private key** | Modal Privy menampilkan kunci |
+| 4 | `/wallet` → **Choose cards** → pilih dua kartu → **Move 2 cards** | Satu modal Privy untuk keduanya, tanda tangan diterima |
+| 5 | Kembali ke `/wallet` | Keduanya muncul di "Cards in this wallet" |
+| 6 | Pilih keduanya → **Return 2 cards** | Keduanya kembali Digital di `/collection` |
+| 7 | Export satu lagi, lalu **Transfer** ke alamat milik Anda sendiri | Kartu berpindah dan tidak kembali |
 
-Langkah 7 dan 8 hanya untuk memastikan tidak ada kejutan. Kartu yang dipakai di langkah 7 hilang dari Gachard selamanya, jadi jangan pakai kartu yang Anda sayangi.
+Langkah 7 hanya untuk memastikan tidak ada kejutan. Kartu yang dipakai di situ hilang dari Gachard selamanya, jadi jangan pakai kartu yang Anda sayangi.
+
+Perhatikan langkah 4: **satu tanda tangan untuk beberapa kartu**. Dulu satu per kartu, dan itu berarti satu modal Privy per kartu — cukup menjengkelkan untuk dianggap cacat. Layak ditunjukkan di rekaman.
 
 Kalau ada yang gagal, console mencetak `[privy] ...` dengan error aslinya.
 
@@ -85,13 +87,15 @@ Katakan: kartu ini dipegang platform atas nama user, dan sekarang user akan meng
 
 ### Bagian B, export (40 detik) — MOMEN 1
 
-1. **Move to My Wallet**.
-2. **Modal Privy muncul.** Beri jeda. Ini UI Privy asli, bukan komponen kita.
-3. Tanda tangani. Tunjukkan isinya: tokenId, alamat tujuan, batas waktu.
+1. Dari `/wallet`, klik **Choose cards** di banner paling atas.
+2. Di `/wallet/move`, pilih **dua** kartu, lalu **Move 2 cards**.
+3. **Modal Privy muncul, sekali saja untuk keduanya.** Beri jeda. Ini UI Privy asli, bukan komponen kita. Tunjukkan isinya: daftar tokenId, alamat tujuan, batas waktu.
 4. MonadVision, refresh. Kartu ada di alamat wallet user.
 5. Kembali ke `/collection`: badge **"In Your Wallet"**, tombol Print dan List **hilang**.
 
 Poin 5 layak disebut: platform tidak lagi bisa mencetak atau menjualnya, karena tidak memegangnya.
+
+Perhatikan juga apa yang **tidak** ada di `/collection`: tidak ada tombol wallet apa pun, untuk siapa pun. Memilih kartu untuk dipindahkan hanya bisa di `/wallet/move`. Itu ADR-002 yang diamandemen, dan layak disebut satu kalimat.
 
 ### Bagian C, siapa yang membayar (20 detik) — MOMEN 2
 
@@ -119,7 +123,7 @@ Mencabut akses di depan kamera membuktikan kendali itu nyata. "Tidak ada tomboln
 
 ### Bagian E, import (25 detik)
 
-1. Di `/wallet`, **Return to Gachard**.
+1. Di `/wallet`, pilih kedua kartu itu, lalu **Return 2 cards**.
 2. Transfer ini dikirim dari wallet user, gas dibayar Privy.
 3. Kartu kembali Digital di `/collection`, Print dan List muncul lagi.
 4. Saldo MON: masih **0**.
@@ -128,11 +132,12 @@ Mencabut akses di depan kamera membuktikan kendali itu nyata. "Tidak ada tomboln
 
 Ini yang menutup pertanyaan "benarkah ini milik user".
 
-1. Di `/wallet`, tunjukkan kolom **Send** dengan peringatannya: sekali dikirim, Gachard tidak bisa membawanya kembali.
-2. Tunjukkan **Reveal private key**. Buka modalnya. **Jangan tampilkan kuncinya di rekaman** — cukup perlihatkan bahwa fiturnya ada, lalu tutup.
-3. Katakan: user bisa membawa wallet ini ke aplikasi lain dan meninggalkan Gachard sepenuhnya.
+1. Di `/wallet`, klik **Transfer** pada satu kartu. Tidak ada kolom alamat yang menganga di kartu — ia baru muncul setelah diminta.
+2. Dialognya dua langkah. Langkah pertama: peringatan, lalu kolom alamat. Bacakan peringatannya, ia pendek dan jujur: pastikan alamatnya benar, lalu periksa lagi, karena kartu yang salah kirim hilang dan Gachard tidak bisa membantu.
+3. Lanjut. Langkah kedua menampilkan alamatnya kembali, utuh 42 karakter, untuk dibaca bukan diketik. Sebutkan kenapa: memeriksa apa yang baru saja Anda ketik, di kotak tempat Anda mengetiknya, bukan benar-benar memeriksa.
+4. Katakan: user bisa membawa kartunya ke mana pun dan meninggalkan Gachard sepenuhnya.
 
-Kalau Anda merekam Send sungguhan, pakai alamat Anda sendiri dan sebutkan bahwa kartunya memang tidak kembali.
+Kalau Anda merekam Transfer sungguhan, pakai alamat Anda sendiri dan sebutkan bahwa kartunya memang tidak kembali.
 
 ---
 
@@ -159,10 +164,9 @@ Kejujuran di sini memperkuat, bukan melemahkan.
 - **Jangan** bilang Gachard tidak bisa memindahkan kartu di wallet user. **Bisa**, karena user memberi izin. Yang benar: izinnya eksplisit, terlihat di UI, dan bisa dicabut sewaktu-waktu.
 - **Jangan** bilang ini menggantikan model custodial. Ini jalur opsional; alur utama tetap custodial, dan itu memang tesis produknya (ADR-002).
 - **Jangan** menyebut smart wallet. Sponsorship berjalan di atas EIP-7702 plus ERC-4337 di balik layar, tapi alamatnya tunggal dan tidak ada smart account terpisah yang kita kelola.
-- **Jangan** menampilkan private key di rekaman. Tunjukkan fiturnya, bukan isinya.
+- **Jangan** mengklaim reveal private key sebagai fitur yang berjalan. Kemampuannya ada di SDK dan kodenya di repo, tapi UI-nya dimatikan. Kalau ditanya, jawabannya justru menarik: dibangun, lalu sengaja dimatikan, karena kunci yang sudah terlihat tidak bisa ditarik kembali.
 - **Jangan** mengklaim AI risk scoring aktif kecuali `MIMO_API_KEY` sudah diset di produksi. Per 22 September 2026 belum, dan dokumen submission sudah menyatakannya apa adanya.
-
-**Yang sekarang boleh diklaim dan sebelumnya tidak:** export private key **tersedia**. ADR-028 mencatatnya mustahil di v1.93.0; v3 membukanya.
+- **Jangan** mengklaim Transfer keluar sudah teruji end-to-end. Logikanya teruji di server dan dialognya teruji di komponen, tapi sampai Anda menjalankan langkah 7 pra-terbang, belum ada kartu yang benar-benar dikirim lewatnya.
 
 ---
 
@@ -171,8 +175,7 @@ Kejujuran di sini memperkuat, bukan melemahkan.
 1. Bersihkan akun demo yang menumpuk di produksi kalau sempat dipakai latihan.
 2. Pastikan kartu demo kembali berstatus Digital, kecuali yang sengaja di-Send.
 3. Pastikan **Gachard access** kembali **Allowed** kalau Bagian D dicabut dan tidak dipulihkan.
-4. ~~Perbarui `MONAD-SUBMISSION.md` dan README yang menyebut export sebagai roadmap.~~ **Selesai 22 September 2026.**
-5. **Amandemen ADR-028.** Alasan pinning ke v1.93.0 sudah terbukti tidak berlaku: v3.44.0 build dan jalan di Turbopack, dan membuka `useSigners` serta `useExportWallet`. ADR itu sekarang mendeskripsikan kendala yang sudah tidak ada.
-6. Perbarui `MONAD-SUBMISSION.md` sekali lagi: export private key kini tersedia, dan ada halaman `/wallet` tersendiri.
+4. ~~Perbarui `MONAD-SUBMISSION.md` dan README.~~ **Selesai 22 September 2026.**
+5. ~~Amandemen ADR-028.~~ **Selesai 22 September 2026.** Pinning ke v1.93.0 terbukti tidak berlaku, dan ADR itu sekarang mencatatnya.
 
-Poin 5 yang paling penting. ADR yang menyatakan sesuatu mustahil, padahal kode di repo membuktikan sebaliknya, lebih menyesatkan daripada tidak ada ADR sama sekali.
+Yang tersisa hanyalah rekamannya sendiri. Semua prasyarat dokumentasinya sudah beres.

@@ -1,10 +1,12 @@
 # Evaluasi Pivot Privy — Memenuhi Syarat Bounty "Beyond Authentication"
 
-## Status: EVALUASI SELESAI, ketiga gerbang teknis LOLOS (belum implementasi, belum ada ADR)
+## Status: SELESAI DAN TERIMPLEMENTASI. Keputusannya ADR-031; dokumen ini adalah bukti yang mendahuluinya.
+
+> Dibiarkan sebagaimana ditulis pada 21 September 2026. Ia mencatat apa yang **belum diketahui** saat itu dan bagaimana ketidaktahuan itu diuji — bukan keadaan sistem hari ini. Untuk keadaan sekarang, baca ADR-031 dan amandemennya di `DECISIONS.md`.
 
 *Dibuat: 21 September 2026*
 *Deadline bounty: 14 Oktober 2026, 10:59 GMT+7 (23 hari lagi). Submission dibuka 2 Oktober.*
-*Dokumen terkait: `docs/PRIVY-EVALUATION.md` (Opsi C, sudah live), `docs/PRIVY-INTEGRATION-SPEC.md`, ADR-028*
+*Dokumen terkait: ADR-028 dan amandemennya di `DECISIONS.md`. Evaluasi dan spec Privy generasi pertama (`PRIVY-EVALUATION.md`, `PRIVY-INTEGRATION-SPEC.md`) sudah dihapus pada 22 September 2026: keduanya mendeskripsikan desain yang sudah tidak ada sambil menyatakan diri IMPLEMENTED. Isinya tetap ada di riwayat git.*
 
 ---
 

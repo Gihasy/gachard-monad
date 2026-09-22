@@ -1,10 +1,12 @@
 # Technical Spec — Card Export & Import via Privy
 
-## Status: SPEC SIAP DIBANGUN, semua prasyarat teknis lolos (belum ada kode)
+## Status: TERBANGUN. Ketujuh tahap sudah ada di produksi.
+
+> Dibiarkan sebagaimana ditulis pada 21 September 2026. Beberapa hal berubah saat dibangun, dan perubahannya tercatat di amandemen ADR-028 dan ADR-031, bukan di sini: SDK naik ke v3.44.0 (`useSigners`, bukan `delegateWallet`), satu tanda tangan EIP-712 kini menaungi satu batch, dan pemilihan kartu pindah ke halamannya sendiri di `/wallet/move`.
 
 *Dibuat: 21 September 2026*
 *Keputusan: ADR-031. Evaluasi dan bukti: `docs/PRIVY-BEYOND-AUTH-EVALUATION.md`*
-*Menggantikan scope: `docs/PRIVY-INTEGRATION-SPEC.md` (view-only, sudah live)*
+*Menggantikan scope Privy generasi pertama yang hanya view-only di `/profile`. Spec lamanya dihapus pada 22 September 2026 karena mendeskripsikan UI yang sudah tidak ada; keputusannya tetap tercatat di ADR-028.*
 *Deadline bounty: 14 Oktober 2026, 10:59 GMT+7*
 
 ---

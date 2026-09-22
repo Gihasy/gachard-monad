@@ -6,6 +6,8 @@ Gachard is a digital-to-physical trading card game (TCG) platform built on **Mon
 
 Users can buy card packs, collect rare NFT cards, trade them on a marketplace, print physical versions, and redeem physical cards back to digital, all without ever seeing a wallet address or signing a transaction.
 
+That is the default, not the ceiling. A user who wants custody of their own cards can connect a Privy wallet and move cards into it, bring them back, or transfer them anywhere. The consumer pages carry no wallet actions for anyone; everything to do with self-custody lives on `/wallet` and `/wallet/move`, which nobody reaches by accident.
+
 ## Key Features
 
 ### Core Loop
@@ -24,7 +26,7 @@ Users can buy card packs, collect rare NFT cards, trade them on a marketplace, p
 
 ### Advanced Features
 - **Pyth Entropy Integration**: Provably fair pack randomness using on-chain verifiable RNG, replacing Math.random() with cryptographically secure seed generation
-- **Privy Beyond Authentication**: Cards move both ways between Gachard and the user's own Privy wallet. Export is authorised by an EIP-712 intent the user signs with that wallet; the return transfer is signed and sent by the user themselves, and Gachard has no route that could do it for them. Gas on both sponsored steps is paid by Privy's native sponsorship, so the wallet transacts while its MON balance stays at zero. Exporting the private key remains unavailable on the pinned SDK (v1.93.0)
+- **Privy Beyond Authentication**: Cards move both ways between Gachard and the user's own Privy wallet. Export is authorised by an EIP-712 intent the user signs with that wallet, one signature covering a whole selection; the return transfer is signed and sent from the user's wallet, and Gachard has no route that could do it without the delegation they grant and can withdraw. Gas on both sponsored steps is paid by Privy's native sponsorship, so the wallet transacts while its MON balance stays at zero. The wallet is bound to the Gachard account permanently and must carry the same email, so a stolen session cannot point it somewhere else
 - **AI Anomaly Detection**: Wash-trading risk scoring on marketplace trades via MiMo LLM, with the resulting score written on-chain through `recordVerification()`. Requires `MIMO_API_KEY`; without it the call degrades to a neutral score rather than failing the trade
 - **Dismantle & Crystal**: Burn cards to earn Crystal currency
 - **QR Verification**: Scan physical cards for authenticity verification
@@ -58,8 +60,9 @@ The seed is generated via Pyth's commit-reveal protocol, making it cryptographic
 ### Architecture
 - **Custodial Wallets**: Users never see private keys
 - **Sponsored Gas**: Platform pays all transaction fees
-- **State Machine**: Digital ↔ Vaulted card status with transfer blocking
+- **State Machine**: Digital ↔ Vaulted ↔ Exported card status with transfer blocking
 - **AES-256-GCM**: Private keys encrypted at rest
+- **One identity**: every request is authenticated by a signed, httpOnly session cookie and nothing else (ADR-032)
 
 ## Why Monad
 
@@ -76,7 +79,9 @@ Stated plainly so nothing here has to be taken on trust:
 | Dismantle → Crystal | Live |
 | Print request → vault lock → redeem | Live end-to-end in software; no physical card has been produced and redeemed yet |
 | AI risk scoring + market insight | Code live and wired; requires `MIMO_API_KEY` to be set in the deployment |
-| Privy self-custody wallet | Live: wallet creation, card export and import, both gas-sponsored by Privy. Key export still unavailable on v1.93.0 |
+| Privy self-custody wallet | Live: wallet creation, export, import and outward transfer, both sponsored steps paid by Privy (v3.44.0) |
+| Revealing the wallet's private key | Built and switched off. `useExportWallet` works on v3.44.0, but a revealed key cannot be un-revealed, so it sits behind a deliberate flag |
+| Export/import exercised end to end by a user | Yes, on Monad Testnet. The outward **transfer** path is built and tested at the server and component level but has not yet been run against a real destination |
 | AI vision card verification | Not built. QR + on-chain lookup is the only verification today |
 | Gameplay (`/play`) | Not built, marked "Coming Soon" in the app |
 | Payments | Simulated; no processor integrated |

@@ -54,7 +54,7 @@ flowchart LR
         UiCollect["Collect<br/>buy and open packs"]
         UiCollection["Collection<br/>print · dismantle"]
         UiTrade["Trade<br/>marketplace"]
-        UiProfile["Profile<br/>optional Privy wallet"]
+        UiProfile["Profile<br/>wallet entry point"]
         UiAdmin["Admin console"]
     end
 
@@ -204,7 +204,7 @@ stateDiagram-v2
 - **AI Anomaly Detection**: Wash-trading detection on marketplace
 - **Support Gachard**: Floating CTA for early supporters, shown on the homepage only
 - **Pyth Entropy**: Provably fair pack randomness with on-chain verifiable RNG
-- **Privy Embedded Wallet**: Optional self-custody wallet for advanced users (For Advanced Users section)
+- **Privy Embedded Wallet**: Optional self-custody wallet. A card can be moved out to a wallet only the user controls, brought back, or transferred anywhere else, with Privy paying the gas (`/wallet`)
 
 ## Quick Start
 
@@ -249,7 +249,7 @@ deployment-specific notes are in [Deployment → Frontend (Vercel)](#frontend-ve
 | Payment | Simulated checkout (demo), no payment processor integrated |
 | AI | MiMo LLM (trade risk scoring, market insight, price suggestion) |
 | RNG | Pyth Entropy (on-chain verifiable) |
-| Wallet (optional) | Privy Embedded Wallet (self-custody, v1.93.0) |
+| Wallet (optional) | Privy Embedded Wallet (self-custody, v3.44.0) |
 | Hosting | Vercel (frontend + backend) |
 
 ## Architecture
@@ -268,16 +268,18 @@ deployment-specific notes are in [Deployment → Frontend (Vercel)](#frontend-ve
 - **ADR-028**: Privy Integration (optional self-custody wallet)
 - **ADR-029**: Pyth Entropy for provably fair pack randomness
 - **ADR-030**: MiMo as the single AI provider
+- **ADR-031**: Card export and import via Privy, with server-side sponsored signing
+- **ADR-032**: One identity, the signed session cookie
 
-The full ADR log is in [`DECISIONS.md`](DECISIONS.md), 30 records covering every
+The full ADR log is in [`DECISIONS.md`](DECISIONS.md), 32 records covering every
 architectural decision, including the ones that were superseded and the known
-limitations of each. The two largest decisions also have dedicated specs:
+limitations of each. The largest decisions also have dedicated specs:
 
 - [`docs/ENTROPY-INTEGRATION-SPEC.md`](docs/ENTROPY-INTEGRATION-SPEC.md), the provably-fair
   pack randomness design: request/callback/fulfill flow, hash commitment, threat model
-- [`docs/PRIVY-EVALUATION.md`](docs/PRIVY-EVALUATION.md) and
-  [`docs/PRIVY-INTEGRATION-SPEC.md`](docs/PRIVY-INTEGRATION-SPEC.md), the self-custody
-  wallet evaluation and the resulting progressive-disclosure design
+- [`docs/PRIVY-BEYOND-AUTH-EVALUATION.md`](docs/PRIVY-BEYOND-AUTH-EVALUATION.md) and
+  [`docs/PRIVY-BEYOND-AUTH-SPEC.md`](docs/PRIVY-BEYOND-AUTH-SPEC.md), the evidence that
+  export and import were possible and the seven-stage design that followed
 
 ### Project Structure
 ```
@@ -427,13 +429,23 @@ All costs are sponsored by the platform. Users only pay with Credits.
 
 ## Roadmap
 
-### True Digital Ownership (Planned)
+### True Digital Ownership (Shipped)
 
-Building on the self-custody wallet foundation (Privy integration, currently live as a view-only "For Advanced Users" section), we are exploring the ability to let users export their cards to their own wallet, which would give them full, verifiable ownership outside the Gachard platform.
+A card can be moved out of Gachard's custody into a Privy wallet only the user
+controls, brought back to resume marketplace trading, printing and dismantling,
+or transferred to any address at all. Privy pays the gas on both sponsored
+steps. This is ADR-031, and it is what closes the loop between custodial
+simplicity and real ownership: the user chooses their own level of control.
 
-Under this planned feature, cards could later be brought back into the Gachard ecosystem (re-imported) to resume in-app features such as marketplace trading, printing, and dismantling. This would complete the loop between custodial simplicity and true blockchain ownership, letting users choose their own level of control.
+Choosing which cards leave happens on `/wallet/move` and nowhere else, so the
+consumer surfaces carry no wallet actions for anyone (ADR-002, amended). One
+EIP-712 signature authorises a whole selection; the transfers still run one
+request per card, because ADR-018 caps a function at ten seconds.
 
-**Current status:** Shipped. A card can be moved to the user's own Privy wallet and brought back, with Privy paying gas on both sponsored steps (ADR-031). Exporting the private key itself is still unavailable on the pinned SDK (ADR-028).
+**Known limitation:** revealing the wallet's private key is built and switched
+off. `useExportWallet` is available on v3.44.0 — the constraint ADR-028
+described is gone — but a revealed key cannot be un-revealed, so it stays
+behind a deliberate flag rather than shipping by default.
 
 ### AI Vision Verification (Planned)
 
