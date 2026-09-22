@@ -42,6 +42,12 @@ interface CardItemProps {
   isListed?: boolean;
   listingId?: string | null;
   listingPrice?: number | null;
+  /**
+   * Whether the owner turned Advanced Access on in their profile. Off by
+   * default: moving a card out starts an irreversible path, so it is offered
+   * only to someone who asked for it (ADR-031).
+   */
+  advancedMode?: boolean;
   onStatusChange?: (tokenId: number, newStatus: string) => void;
 }
 
@@ -79,6 +85,7 @@ export default function CardItem({
   isListed: initialIsListed,
   listingId: initialListingId,
   listingPrice: initialListingPrice,
+  advancedMode = false,
   onStatusChange,
 }: CardItemProps) {
   const [printing, setPrinting] = useState(false);
@@ -107,7 +114,8 @@ export default function CardItem({
   const isExported = currentStatus === "In Your Wallet";
   // Export is offered on exactly the same footing as Print and Sell: a plain
   // Digital card the platform still holds.
-  const canExport = currentStatus === "Digital" && tokenId !== null && !isListed;
+  const canExport =
+    advancedMode === true && currentStatus === "Digital" && tokenId !== null && !isListed;
 
   const isFormValid =
     form.recipientName.trim() &&

@@ -1,35 +1,95 @@
 "use client";
 
-import { useState, useEffect } from "react";
+/**
+ * "For Advanced Users" on /profile (ADR-028, extended for ADR-031).
+ *
+ * Two decisions live here and they are deliberately separate. Linking a Privy
+ * wallet is one; turning on the per-card "Move to My Wallet" action is
+ * another. Someone can hold a wallet and still not want an irreversible
+ * button on every card they own, so the switch is its own control rather than
+ * something the link implies.
+ *
+ * The warning is not decoration. Everything below it is hard or impossible to
+ * undo: a card sent to an outside address cannot be recovered, the wallet link
+ * is permanent, and a revealed private key cannot be un-revealed. The section
+ * says so before it offers any of it.
+ */
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { getAccessToken, PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
+import {
+  getAccessToken,
+  PrivyProvider,
+  usePrivy,
+  useWallets,
+} from "@privy-io/react-auth";
 import { monadTestnet } from "@/lib/monad-testnet";
 
+/**
+ * Privy is named in words rather than with a mark, because the repo has no
+ * licensed brand asset and drawing an approximation of someone else's logo
+ * would misrepresent it. Drop the real SVG in and swap this if you have one.
+ */
+function PrivyMark() {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full"
+        style={{ background: "var(--cosmic-violet)", boxShadow: "0 0 8px var(--cosmic-violet)" }}
+      />
+      <span
+        className="text-[0.7rem] tracking-[0.12em]"
+        style={{ color: "var(--text-tertiary)" }}
+      >
+        Secured by <span style={{ color: "var(--cosmic-violet)" }}>Privy</span>
+      </span>
+    </span>
+  );
+}
+
 function PrivyWalletContent() {
-  const { ready, authenticated, login, logout, user } = usePrivy();
+  const { ready, authenticated, login, user } = usePrivy();
   const { wallets } = useWallets();
-  const [expanded, setExpanded] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [advanced, setAdvanced] = useState(false);
+  const [linked, setLinked] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
   // Must be the embedded Privy wallet specifically. useWallets() also returns
   // external wallets (an injected MetaMask, say), and wallets[0] can be one of
-  // those. Saving an external address here is not cosmetic: it is the address
-  // cards get exported to, and the server cannot send from a wallet Privy does
-  // not own, so the card could never be brought back (ADR-031).
+  // those. Saving an external address is not cosmetic: it is the address cards
+  // get exported to, and the server cannot send from a wallet Privy does not
+  // own, so the card could never be brought back (ADR-031).
   const wallet = wallets.find((w) => w.walletClientType === "privy");
   const isConnected = authenticated && !!wallet;
 
-  // Save wallet info to backend when first connected
-  // NOTE: useEffect MUST be before any early returns (Rules of Hooks)
+  const loadSetting = useCallback(async () => {
+    try {
+      const res = await fetch("/api/user/advanced", { credentials: "include" });
+      const body = await res.json().catch(() => null);
+      if (body) {
+        setAdvanced(body.enabled === true);
+        setLinked(body.linked === true);
+      }
+    } catch {
+      /* leave it off rather than guessing */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSetting();
+  }, [loadSetting]);
+
+  // Bind on connect. Send a token rather than a claim: the DID and the wallet
+  // address used to be posted from here and written as given, which let anyone
+  // with a Gachard session point the binding at a wallet of their own. The
+  // server derives both from this token now (ADR-031).
   useEffect(() => {
     if (!ready || !isConnected || saved || saving) return;
     setSaving(true);
-    // Send a token rather than a claim. The DID and the wallet address used
-    // to be posted from here and written as given, which let anyone with a
-    // Gachard session point the binding at a wallet of their own. The server
-    // now derives both from this token (ADR-031).
     (async () => {
       try {
         const authToken = await getAccessToken();
@@ -46,6 +106,7 @@ function PrivyWalletContent() {
           return;
         }
         setSaved(true);
+        setLinked(true);
       } catch {
         setError("Could not connect that wallet.");
       } finally {
@@ -54,95 +115,181 @@ function PrivyWalletContent() {
     })();
   }, [ready, isConnected, saved, saving, wallet, user]);
 
+  const toggle = useCallback(async () => {
+    const next = !advanced;
+    setToggling(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/user/advanced", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ enabled: next }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(body?.error ?? "Could not save that setting.");
+        return;
+      }
+      setAdvanced(next);
+    } catch {
+      setError("Could not save that setting.");
+    } finally {
+      setToggling(false);
+    }
+  }, [advanced]);
+
   if (!ready) return null;
 
-  if (!isConnected) {
-    return (
-      <div className="glass p-6 mt-8">
-        <h3 className="text-lg font-display text-white/90 mb-2">For Advanced Users</h3>
-        <p className="text-sm text-white/50 mb-4">
-          Want full control over your cards&apos; underlying technology? Set up advanced access
-          to manage your data independently.
-        </p>
-        <button
-          onClick={() => {
-            setError(null);
-            try { login(); } catch { setError("Something went wrong. Please try again."); }
-          }}
-          className="btn-ghost text-sm"
-          data-testid="privy-setup-btn"
-        >
-          Set Up Advanced Access
-        </button>
-        {error && (
-          <p className="mt-3 text-sm" style={{ color: "var(--aurora-pink)" }}>
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="glass p-6 mt-8">
-      <h3 className="text-lg font-display text-white/90 mb-2">For Advanced Users</h3>
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-green-400">✓</span>
-        <span className="text-sm text-white/70">Advanced Access Enabled</span>
+    <section className="glass p-6 mt-8" data-testid="advanced-section">
+      <div className="flex items-baseline justify-between gap-3 mb-4">
+        <p
+          className="text-[0.72rem] uppercase tracking-[0.22em]"
+          style={{ color: "var(--cosmic-violet)" }}
+        >
+          For advanced users
+        </p>
+        <PrivyMark />
       </div>
 
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="text-sm text-white/50 hover:text-white/70 transition-colors"
-        data-testid="privy-toggle-details"
-      >
-        {expanded ? "Hide Technical Details ▴" : "Show Technical Details ▾"}
-      </button>
+      <p className="text-sm leading-relaxed mb-5" style={{ color: "var(--text-tertiary)" }}>
+        Hold your cards in a wallet only you control. Move them out of Gachard, bring them back,
+        or take them somewhere else entirely.
+      </p>
 
-      {expanded && (
-        <div className="mt-4 pt-4 border-t border-white/10 space-y-4">
-          <div>
-            <p className="text-xs text-white/40 mb-1">Address</p>
-            <p className="text-sm text-white/70 font-mono break-all">{wallet.address}</p>
+      {/* Said before anything is offered, not after. */}
+      <div
+        className="rounded-xl p-4 mb-5"
+        style={{
+          background: "rgba(255,196,102,0.06)",
+          border: "1px solid rgba(255,196,102,0.22)",
+        }}
+        data-testid="advanced-warning"
+      >
+        <p
+          className="text-[0.68rem] uppercase tracking-[0.14em] mb-2"
+          style={{ color: "var(--aurora-gold)" }}
+        >
+          Before you turn this on
+        </p>
+        <ul className="space-y-1.5 text-[0.78rem] leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
+          <li>
+            <span style={{ color: "var(--text-secondary)" }}>You become responsible for the wallet.</span>{" "}
+            Gachard cannot recover a card you send to an outside address, and cannot undo it.
+          </li>
+          <li>
+            <span style={{ color: "var(--text-secondary)" }}>The link is permanent.</span> Your
+            wallet is tied to this Gachard account and its email, and cannot be swapped later.
+          </li>
+          <li>
+            <span style={{ color: "var(--text-secondary)" }}>A card in your wallet leaves Gachard.</span>{" "}
+            While it is out there it cannot be printed, listed or dismantled until you return it.
+          </li>
+          <li>
+            <span style={{ color: "var(--text-secondary)" }}>Gachard needs your permission to help.</span>{" "}
+            Returning a card requires access you grant, and you can withdraw it at any time.
+          </li>
+        </ul>
+      </div>
+
+      {!isConnected ? (
+        <>
+          <button
+            onClick={() => {
+              setError(null);
+              try {
+                login();
+              } catch {
+                setError("Something went wrong. Please try again.");
+              }
+            }}
+            className="btn-primary !py-2.5 !px-6 !text-xs"
+            data-testid="privy-setup-btn"
+          >
+            Access
+          </button>
+          <p className="text-[0.68rem] mt-2" style={{ color: "var(--text-tertiary)" }}>
+            Sign in with the same email you use for Gachard.
+          </p>
+        </>
+      ) : (
+        <div className="space-y-4">
+          {/* The switch, separate from the link. */}
+          <div className="card-surface px-4 py-3 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm">Advanced access</p>
+              <p className="text-[0.7rem]" style={{ color: "var(--text-tertiary)" }}>
+                {advanced
+                  ? "Every card shows Move to My Wallet."
+                  : "Your cards stay as they are, with no wallet actions."}
+              </p>
+            </div>
+            <button
+              onClick={toggle}
+              disabled={toggling || !linked}
+              role="switch"
+              aria-checked={advanced}
+              aria-label="Advanced access"
+              className="relative shrink-0 rounded-full transition-all disabled:opacity-40"
+              style={{
+                width: 46,
+                height: 26,
+                background: advanced ? "rgba(0,204,255,0.25)" : "rgba(255,255,255,0.08)",
+                border: `1px solid ${advanced ? "rgba(0,204,255,0.5)" : "var(--border-strong)"}`,
+              }}
+              data-testid="advanced-toggle"
+            >
+              <span
+                className="absolute rounded-full transition-all"
+                style={{
+                  width: 18,
+                  height: 18,
+                  top: 3,
+                  left: advanced ? 23 : 3,
+                  background: advanced ? "var(--electric-blue)" : "var(--text-tertiary)",
+                  boxShadow: advanced ? "0 0 10px var(--electric-blue)" : "none",
+                }}
+              />
+            </button>
+          </div>
+
+          <div className="card-surface px-4 py-3">
+            <p className="text-[0.65rem] uppercase tracking-[0.14em] mb-1" style={{ color: "var(--text-tertiary)" }}>
+              Wallet address
+            </p>
+            <p className="text-[0.78rem] font-mono break-all" style={{ color: "var(--text-secondary)" }}>
+              {wallet.address}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
             <Link
               href="/wallet"
-              className="btn-ghost !py-2 !px-3 !text-[0.7rem] inline-block mt-2"
+              className="btn-ghost !py-2 !px-4 !text-[0.7rem]"
               data-testid="open-wallet-page"
             >
               Open wallet →
             </Link>
-          </div>
-
-          <div>
-            <p className="text-xs text-white/40 mb-1">Network</p>
-            <p className="text-sm text-white/70">Monad Testnet</p>
-          </div>
-
-          <a
-            href={`https://testnet.monadvision.com/address/${wallet.address}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-ghost text-sm inline-block"
-            data-testid="privy-explorer-link"
-          >
-            View on Block Explorer
-          </a>
-
-          <div className="pt-2">
-            <button
-              onClick={() => {
-                setExpanded(false);
-                try { logout(); } catch { /* ignore */ }
-              }}
-              className="text-xs text-white/30 hover:text-white/50 transition-colors"
-              data-testid="privy-disconnect-btn"
+            <a
+              href={`https://testnet.monadvision.com/address/${wallet.address}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost !py-2 !px-4 !text-[0.7rem]"
+              data-testid="privy-explorer-link"
             >
-              Disconnect Advanced Access
-            </button>
+              Explorer ↗
+            </a>
           </div>
         </div>
       )}
-    </div>
+
+      {error && (
+        <p className="mt-3 text-xs" style={{ color: "var(--aurora-pink)" }} data-testid="advanced-error">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 

@@ -36,6 +36,9 @@ export default function Koleksi() {
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>("all");
+  // Decides whether an irreversible action appears on every card, so it comes
+  // from the server rather than local storage (ADR-031).
+  const [advancedMode, setAdvancedMode] = useState(false);
 
   // Mount-only: hydrate session + trigger the middleware fallback if the
   // client happens to be reached without the cookie somehow. React setters
@@ -63,6 +66,11 @@ export default function Koleksi() {
       timedOut = true;
       setLoading(false);
     }, 6000);
+    fetch("/api/user/advanced", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setAdvancedMode(d?.enabled === true))
+      .catch(() => {});
+
     fetch("/api/cards", { credentials: "include" })
       .then((r) => r.json())
       .then((d: { cards?: Card[] }) => {
@@ -224,6 +232,7 @@ export default function Koleksi() {
               isListed={card.isListed}
               listingId={card.listingId}
               listingPrice={card.listingPrice}
+              advancedMode={advancedMode}
             />
           ))}
         </div>
