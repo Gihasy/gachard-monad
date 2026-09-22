@@ -108,6 +108,10 @@ export async function GET(request: Request) {
         deliveredAt: card.deliveredAt || null,
         claimId: card.claimId || null,
         isNew: !card.viewed,
+        // /wallet needs this: an exported card whose claim never confirmed
+        // cannot be returned, and without the field the page can only find out
+        // by failing.
+        exportClaimStatus: card.exportClaimStatus ?? null,
         isListed: card.isListed || false,
         listingId: card.listingId || null,
         listingPrice: card.listingId ? listingPriceMap.get(card.listingId) || null : null,

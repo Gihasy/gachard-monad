@@ -21,6 +21,8 @@ export type WalletCard = {
   rarity: number;
   displayStatus?: string;
   isListed?: boolean;
+  /** Null on a card whose export claim never settled; it cannot be returned. */
+  exportClaimStatus?: string | null;
 };
 
 export const RARITY = ["Common", "Rare", "Epic", "Legendary"];

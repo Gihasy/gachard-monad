@@ -75,6 +75,7 @@ function Workspace() {
   // The card being transferred out. The destination lives in the dialog, which
   // is the only place it is ever typed.
   const [transferring, setTransferring] = useState<WalletCard | null>(null);
+  const [claiming, setClaiming] = useState<string | null>(null);
   const [returnNote, setReturnNote] = useState<string | null>(null);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
@@ -176,11 +177,66 @@ function Workspace() {
    * Gachard, which is what lets the server send on the user's behalf. So a
    * batch needs no batched signature — only a selection.
    *
-   * Sequential, and it stops at the first failure so the count reported back
-   * is the count that actually returned. Privy's sponsorship settles
-   * asynchronously, so /api/cards is re-read once at the end rather than after
-   * every card.
+   * Sequential, but a failure no longer stops the run. These cards are
+   * independent of each other, and the first version broke on the first
+   * refusal — so one card whose claim never settled blocked two perfectly
+   * returnable ones behind it, and the user saw a message about a card they
+   * had not singled out. Stopping is right for dependent steps and wrong for a
+   * list of separate ones. Both counts are reported instead.
+   *
+   * Privy's sponsorship settles asynchronously, so /api/cards is re-read once
+   * at the end rather than after every card.
    */
+  /**
+   * Finish a claim that never settled.
+   *
+   * Export sends a sponsored claim from the user's wallet, and import refuses a
+   * card without a confirmed one. A card whose claim was never sent — an older
+   * export, or one whose call failed — could therefore never come back, and
+   * nothing on the page said so or offered a way out. It could only be
+   * transferred away, which is a strange thing to corner someone into.
+   */
+  const finishClaim = useCallback(
+    async (card: WalletCard) => {
+      const id = card.cardId ?? String(card.tokenId);
+      setClaiming(id);
+      setErr(null);
+      setNote(null);
+      try {
+        const res = await fetch("/api/privy/export/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ cardId: card.cardId }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error ?? "Could not finish the claim.");
+
+        // Sponsorship settles asynchronously, so the claim is confirmed by
+        // asking rather than assuming.
+        for (let i = 0; i < 10; i++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          const st = await fetch(`/api/privy/status/${card.cardId}`);
+          const stBody = await st.json().catch(() => null);
+          if (stBody?.claimStatus === "confirmed" || stBody?.settled) {
+            setNote("Claim finished. This card can be returned now.");
+            await load();
+            return;
+          }
+          if (stBody?.claimStatus === "failed") {
+            throw new Error("The claim did not go through. Please try again.");
+          }
+        }
+        setNote("The claim is still settling. Refresh in a moment.");
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Could not finish the claim.");
+      } finally {
+        setClaiming(null);
+      }
+    },
+    [load]
+  );
+
   const returnSelected = useCallback(async () => {
     const chosen = cards.filter((c) => picked.has(c.cardId ?? String(c.tokenId)));
     if (chosen.length === 0) return;
@@ -189,6 +245,7 @@ function Workspace() {
     setErr(null);
     setNote(null);
     let done = 0;
+    const skipped: string[] = [];
 
     for (const [i, card] of chosen.entries()) {
       setReturnNote(`Returning card ${i + 1} of ${chosen.length}…`);
@@ -203,12 +260,7 @@ function Workspace() {
         done++;
       } catch (e) {
         const why = e instanceof Error ? e.message : "Something went wrong.";
-        setErr(
-          done > 0
-            ? `${why} ${done} card${done === 1 ? "" : "s"} returned before this one.`
-            : why
-        );
-        break;
+        skipped.push(`${card.cardId ?? card.tokenId}: ${why}`);
       }
     }
 
@@ -218,6 +270,13 @@ function Workspace() {
     if (done > 0) {
       setNote(
         `${done} card${done === 1 ? "" : "s"} on the way back to your collection.`
+      );
+    }
+    // Named, not counted. "1 card was skipped" leaves the user hunting for
+    // which one and why.
+    if (skipped.length > 0) {
+      setErr(
+        `Left behind — ${skipped.join("; ")}`
       );
     }
     await load();
@@ -416,6 +475,34 @@ function Workspace() {
                           address is asked for in the dialog, not left sitting
                           open on every tile where a stray paste is one click
                           from permanent. */}
+                      {c.exportClaimStatus !== "confirmed" && (
+                        <div
+                          className="mt-2 px-1 py-2 rounded-lg"
+                          style={{
+                            background: "rgba(255,196,102,0.07)",
+                            border: "1px solid rgba(255,196,102,0.22)",
+                          }}
+                          data-testid={`wallet-unclaimed-${c.tokenId}`}
+                        >
+                          <p className="text-[0.6rem] leading-relaxed px-1 mb-1.5" style={{ color: "var(--text-tertiary)" }}>
+                            This card was never claimed, so it cannot be returned yet.
+                          </p>
+                          <button
+                            onClick={() => finishClaim(c)}
+                            disabled={busy !== null || claiming !== null}
+                            className="w-full py-1.5 text-[0.62rem] rounded-lg transition-all disabled:opacity-40"
+                            style={{
+                              background: "rgba(255,196,102,0.12)",
+                              border: "1px solid rgba(255,196,102,0.35)",
+                              color: "var(--aurora-gold)",
+                            }}
+                            data-testid={`wallet-finish-claim-${c.tokenId}`}
+                          >
+                            {claiming === id ? "Finishing…" : "Finish claiming"}
+                          </button>
+                        </div>
+                      )}
+
                       <div className="mt-2 pt-2 px-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                         <button
                           onClick={() => setTransferring(c)}
