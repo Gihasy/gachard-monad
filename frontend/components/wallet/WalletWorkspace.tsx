@@ -37,6 +37,7 @@ import { privyConfig } from "@/lib/privy-config";
 import {
   CardFrame,
   Eyebrow,
+  WalletAddress,
   MoveCardsBanner,
   EXPLORER,
   MAX_RETURN_BATCH,
@@ -44,6 +45,7 @@ import {
 } from "./shared";
 
 const SIGNER_ID = process.env.NEXT_PUBLIC_PRIVY_SIGNER_ID ?? "";
+
 
 /**
  * Whether to offer "Reveal private key".
@@ -70,7 +72,6 @@ function Workspace() {
   const [sendTo, setSendTo] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [returnNote, setReturnNote] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
   const address = embedded?.address ?? null;
@@ -275,30 +276,7 @@ function Workspace() {
           >
             Your wallet
           </Eyebrow>
-          <div className="card-surface px-4 py-3 flex items-center gap-3">
-            <p
-              className="text-[0.8rem] font-mono break-all flex-1"
-              style={{ color: "var(--text-secondary)" }}
-              data-testid="wallet-address"
-            >
-              {address}
-            </p>
-            <button
-              onClick={() => {
-                navigator.clipboard?.writeText(address).then(
-                  () => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1600);
-                  },
-                  () => {}
-                );
-              }}
-              className="btn-ghost !py-1.5 !px-3 !text-[0.6rem] shrink-0"
-              data-testid="wallet-copy"
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
+          <WalletAddress address={address} />
         </section>
 
         {/* Permission */}

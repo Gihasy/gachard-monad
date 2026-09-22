@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Pieces shared by the wallet pages (ADR-031).
  *
@@ -5,7 +7,7 @@
  * what to send there. Both draw cards and both head their sections the same
  * way, so the vocabulary lives here rather than being copied and drifting.
  */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -241,5 +243,85 @@ export function MoveCardsBanner() {
         Choose cards
       </Link>
     </section>
+  );
+}
+
+
+/**
+ * Shorten an address for display.
+ *
+ * A full address is 42 characters and this sits in a 21rem sidebar, so it was
+ * wrapping onto a second line and breaking mid-run: ugly, and harder to check
+ * than the short form. Nothing is lost by shortening. The value is never typed
+ * out by hand — Copy puts the whole thing on the clipboard and Explorer opens
+ * it — and the full string stays on the element for hovering, selecting and
+ * screen readers. Ten leading and eight trailing characters is enough to tell
+ * two of your own addresses apart, which is what this display is for.
+ */
+export function shortAddress(a: string) {
+  return a.length <= 20 ? a : `${a.slice(0, 10)}…${a.slice(-8)}`;
+}
+
+/** The wallet address, with a copy button. */
+export function WalletAddress({ address }: { address: string }) {
+  // "idle" | "ok" | "fail". The failure case used to be swallowed by an empty
+  // rejection handler, so a browser that denies clipboard access left the user
+  // pressing Copy and watching nothing happen. Saying it failed is worth more
+  // than pretending it did not, and the address is still on the element and one
+  // click away on the explorer.
+  const [state, setState] = useState<"idle" | "ok" | "fail">("idle");
+
+  return (
+    <div className="card-surface px-4 py-3">
+      <p
+        className="text-[0.6rem] uppercase tracking-[0.14em] mb-1.5"
+        style={{ color: "var(--text-tertiary)" }}
+      >
+        Address
+      </p>
+      <div className="flex items-center gap-3">
+        <p
+          className="text-[0.82rem] font-mono flex-1 min-w-0 truncate"
+          style={{ color: "var(--text-secondary)" }}
+          title={address}
+          data-testid="wallet-address"
+        >
+          {shortAddress(address)}
+        </p>
+        <button
+          onClick={async () => {
+            try {
+              if (!navigator.clipboard) throw new Error("no clipboard");
+              await navigator.clipboard.writeText(address);
+              setState("ok");
+            } catch {
+              setState("fail");
+            }
+            setTimeout(() => setState("idle"), 2000);
+          }}
+          className="btn-ghost !py-1.5 !px-3 !text-[0.6rem] shrink-0 whitespace-nowrap"
+          style={
+            state === "ok"
+              ? { color: "var(--electric-blue)", borderColor: "rgba(0,204,255,0.4)" }
+              : state === "fail"
+                ? { color: "var(--aurora-pink)", borderColor: "rgba(255,107,186,0.4)" }
+                : undefined
+          }
+          aria-label={
+            state === "ok"
+              ? "Address copied"
+              : state === "fail"
+                ? "Could not copy, select the address instead"
+                : "Copy full address"
+          }
+          data-testid="wallet-copy"
+        >
+          {state === "ok" ? "Copied" : state === "fail" ? "Copy failed" : "Copy"}
+        </button>
+      </div>
+      {/* The whole value, for anyone reading this with a screen reader rather
+          than looking at it. */}
+      <span className="sr-only">{address}</span>
+    </div>
   );
 }
