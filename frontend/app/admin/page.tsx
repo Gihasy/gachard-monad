@@ -308,6 +308,11 @@ const TAB_META: Record<TabKey, { label: string; icon: React.ReactNode }> = {
 
 export default function AdminPage() {
   const [tab, setTab] = useState<TabKey>("cards");
+  // Three panels hold other people's contact details and stay shut until an
+  // admin asks for them. The cookie does the real work; this only decides what
+  // the page draws.
+  const [locked, setLocked] = useState(true);
+  const [unlockOpen, setUnlockOpen] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [txs, setTxs] = useState<AdminTx[]>([]);
   const [cards, setCards] = useState<AdminCard[]>([]);
@@ -356,17 +361,26 @@ export default function AdminPage() {
     setLoading(true);
     setError(null);
 
+    // A locked panel answers 401. Without this the tables would simply render
+    // empty, which reads as "no users yet" rather than "you cannot see these".
+    const readPrivate = async (url: string) => {
+      const r = await fetch(url, { credentials: "include" });
+      if (r.status === 401) return { locked: true };
+      return r.json();
+    };
+
     Promise.all([
-      fetch("/api/admin/users", { credentials: "include" }).then((r) => r.json()),
+      readPrivate("/api/admin/users"),
       fetch("/api/admin/transactions", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/admin/cards", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/admin/print-requests", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/admin/pending-cards", { credentials: "include" }).then((r) => r.json()),
-      fetch("/api/admin/supporters", { credentials: "include" }).then((r) => r.json()),
-      fetch("/api/admin/creator-applications", { credentials: "include" }).then((r) => r.json()),
+      readPrivate("/api/admin/supporters"),
+      readPrivate("/api/admin/creator-applications"),
       fetch("/api/admin/balances", { credentials: "include" }).then((r) => r.json()),
     ])
       .then(([usersData, txsData, cardsData, printsData, pendingData, supportersData, creatorsData, balancesData]) => {
+        setLocked(usersData?.locked === true);
         setUsers(usersData.users ?? []);
         setTxs(txsData.transactions ?? []);
         setCards(cardsData.cards ?? []);
@@ -593,9 +607,11 @@ export default function AdminPage() {
         <SummaryCard label="Dismantle" value={txs.filter((t) => t.type === "dismantled").length} color="var(--crystal)" active={tab === "dismantle"} onClick={() => setTab("dismantle")} />
         <SummaryCard label="Print Requests" value={pendingPrints} color="var(--aurora-gold)" active={tab === "prints"} onClick={() => setTab("prints")} hasNotification={newPrintRequests > 0} />
         <SummaryCard label="Pending Mints" value={pendingMeta.total} color={pendingMeta.staleCount > 0 ? "#ff6bba" : "var(--electric-blue)"} active={tab === "health"} onClick={() => setTab("health")} hasNotification={pendingMeta.staleCount > 0} />
-        <SummaryCard label="Users" value={users.length} color="var(--electric-blue)" active={tab === "users"} onClick={() => setTab("users")} />
-        <SummaryCard label="Supporters" value={supporters.length} color="var(--aurora-pink)" active={tab === "supporters"} onClick={() => setTab("supporters")} />
-        <SummaryCard label="Creators" value={creatorApps.length} color="var(--cosmic-violet)" active={tab === "creators"} onClick={() => setTab("creators")} />
+        {/* A locked count shows a dash. Zero would be a lie, and a real number
+            would leak how many people are in there. */}
+        <SummaryCard label="Users" value={locked ? "—" : users.length} color="var(--electric-blue)" active={tab === "users"} onClick={() => setTab("users")} />
+        <SummaryCard label="Supporters" value={locked ? "—" : supporters.length} color="var(--aurora-pink)" active={tab === "supporters"} onClick={() => setTab("supporters")} />
+        <SummaryCard label="Creators" value={locked ? "—" : creatorApps.length} color="var(--cosmic-violet)" active={tab === "creators"} onClick={() => setTab("creators")} />
       </div>
 
       {/* Tabs */}
@@ -659,7 +675,7 @@ export default function AdminPage() {
           <p className="text-xs text-white/40 mb-3 uppercase tracking-widest" data-testid="admin-count">
             {count} record{count === 1 ? "" : "s"}
           </p>
-          {tab === "users" && (
+          {tab === "users" && (locked ? <LockedPanel what="user accounts" onUnlock={() => setUnlockOpen(true)} /> :
             <>
               <TableControls
                 testId="users-controls"
@@ -855,7 +871,7 @@ export default function AdminPage() {
               />
             </>
           )}
-          {tab === "supporters" && (
+          {tab === "supporters" && (locked ? <LockedPanel what="supporter messages" onUnlock={() => setUnlockOpen(true)} /> :
             <>
               <TableControls
                 testId="supporters-controls"
@@ -901,7 +917,7 @@ export default function AdminPage() {
               <DismantleTable txs={dismantleTxs} cards={cards} users={users} />
             </>
           )}
-          {tab === "creators" && (
+          {tab === "creators" && (locked ? <LockedPanel what="creator applications" onUnlock={() => setUnlockOpen(true)} /> :
             <>
               <TableControls
                 testId="creators-controls"
@@ -930,7 +946,195 @@ export default function AdminPage() {
           )}
         </>
       )}
+
+      {unlockOpen && (
+        <UnlockDialog
+          onClose={() => setUnlockOpen(false)}
+          onUnlocked={() => {
+            setUnlockOpen(false);
+            // The cookie is set; re-read so the panels fill in rather than
+            // asking the admin to reload.
+            fetchAll();
+          }}
+        />
+      )}
     </PageShell>
+  );
+}
+
+/**
+ * A shut panel: blurred placeholder rows behind a closed eye.
+ *
+ * The rows are decoration, not censored data — a locked panel never received
+ * any. Blurring something shaped like the table is honest about what is behind
+ * the lock without pretending to show it, and it reads faster than a bare
+ * message would.
+ */
+function LockedPanel({ what, onUnlock }: { what: string; onUnlock: () => void }) {
+  return (
+    <div className="relative" data-testid="admin-locked-panel">
+      <div
+        aria-hidden
+        className="select-none pointer-events-none"
+        style={{ filter: "blur(7px)", opacity: 0.4 }}
+      >
+        {Array.from({ length: 5 }, (_, i) => (
+          <div
+            key={i}
+            className="glass mb-2 px-4 flex items-center gap-6"
+            style={{ height: 52 }}
+          >
+            <span className="h-3 rounded bg-white/25" style={{ width: `${28 - i * 3}%` }} />
+            <span className="h-3 rounded bg-white/15" style={{ width: "18%" }} />
+            <span className="h-3 rounded bg-white/10" style={{ width: "30%" }} />
+          </div>
+        ))}
+      </div>
+
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+        <svg
+          width="34" height="34" viewBox="0 0 24 24" fill="none"
+          stroke="var(--text-tertiary)" strokeWidth="1.6"
+          strokeLinecap="round" strokeLinejoin="round"
+          className="mb-3"
+          aria-hidden
+        >
+          <path d="M2 2l20 20" />
+          <path d="M6.7 6.7A10.5 10.5 0 0 0 1 12s4 7 11 7a10.6 10.6 0 0 0 5.3-1.4" />
+          <path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c7 0 11 8 11 8a19 19 0 0 1-3.4 4.3" />
+          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+        </svg>
+
+        <p className="text-sm mb-1" style={{ color: "var(--text-secondary)" }}>
+          Hidden: {what}
+        </p>
+        <p className="text-xs mb-4 max-w-sm" style={{ color: "var(--text-tertiary)" }}>
+          This console is open so anyone can follow a card through the print queue.
+          Contact details belong to people who did not agree to that, so they stay shut.
+        </p>
+        <button
+          onClick={onUnlock}
+          className="btn-primary !py-2.5 !px-6 !text-xs"
+          data-testid="admin-unlock-btn"
+        >
+          Unlock with admin password
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Credentials asked for in context, rather than by the browser. */
+function UnlockDialog({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, busy]);
+
+  const submit = async () => {
+    if (!username.trim() || !password) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(body?.error ?? "Could not unlock.");
+        return;
+      }
+      onUnlocked();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={() => !busy && onClose()}
+      data-testid="admin-unlock-dialog"
+    >
+      <div
+        className="glass w-full max-w-sm p-6"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Unlock admin data"
+      >
+        <p
+          className="text-[0.72rem] uppercase tracking-[0.22em] mb-2"
+          style={{ color: "var(--cosmic-violet)" }}
+        >
+          Admin access
+        </p>
+        <p className="text-xs mb-5" style={{ color: "var(--text-tertiary)" }}>
+          Unlocks the panels holding personal data for eight hours, on this browser only.
+        </p>
+
+        <label className="block text-[0.6rem] uppercase tracking-[0.14em] mb-1.5" style={{ color: "var(--text-tertiary)" }}>
+          Username
+        </label>
+        <div className="form-field mb-3">
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoFocus
+            disabled={busy}
+            className="!text-sm"
+            data-testid="admin-unlock-user"
+          />
+        </div>
+
+        <label className="block text-[0.6rem] uppercase tracking-[0.14em] mb-1.5" style={{ color: "var(--text-tertiary)" }}>
+          Password
+        </label>
+        <div className="form-field mb-4">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            disabled={busy}
+            className="!text-sm"
+            data-testid="admin-unlock-pass"
+          />
+        </div>
+
+        {error && (
+          <p className="text-xs mb-4" style={{ color: "var(--aurora-pink)" }} data-testid="admin-unlock-error">
+            {error}
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            onClick={submit}
+            disabled={busy || !username.trim() || !password}
+            className="btn-primary !py-2.5 !text-xs flex-1 disabled:opacity-40"
+            data-testid="admin-unlock-submit"
+          >
+            {busy ? "Unlocking…" : "Unlock"}
+          </button>
+          <button onClick={onClose} disabled={busy} className="btn-ghost !py-2.5 !px-5 !text-xs">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

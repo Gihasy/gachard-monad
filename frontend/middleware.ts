@@ -5,7 +5,19 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 const ADMIN_COOKIE_NAME = "gachard_admin";
 const ADMIN_MAX_AGE = 60 * 60 * 8; // one working session
-const ADMIN_REALM = "Gachard Admin";
+
+/**
+ * Admin endpoints holding other people's personal details.
+ *
+ * Everything else under /api/admin is about cards, transactions and the print
+ * queue — the flow the console exists to make legible, and nothing a stranger
+ * learns anything private from.
+ */
+const ADMIN_PRIVATE = [
+  "/api/admin/users",
+  "/api/admin/supporters",
+  "/api/admin/creator-applications",
+];
 
 const PROTECTED = ["/collection", "/profile", "/topup", "/wallet"];
 
@@ -151,43 +163,64 @@ function basicAuthOk(header: string | null): boolean {
   return okUser && okPass;
 }
 
-function adminChallenge(pathname: string) {
-  const body = pathname.startsWith("/api/")
-    ? { error: "Admin authentication required" }
-    : null;
-  const headers = { "WWW-Authenticate": `Basic realm="${ADMIN_REALM}", charset="UTF-8"` };
-
-  return body
-    ? NextResponse.json(body, { status: 401, headers })
-    : new NextResponse("Authentication required", { status: 401, headers });
+/**
+ * Refuse without a `WWW-Authenticate` header.
+ *
+ * Sending one would make the browser throw up its own credential dialog over a
+ * page that is otherwise public, which is both ugly and confusing when only a
+ * few panels are locked. The console asks for the password itself, in context,
+ * next to the thing being unlocked.
+ */
+function adminLocked() {
+  return NextResponse.json(
+    { error: "Admin credentials required.", code: "admin_locked" },
+    { status: 401 }
+  );
 }
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Admin console and its API. See adminCookieValid above for why this is not
-  // Basic auth alone.
+  // The admin console stays public, deliberately. A judge should be able to
+  // follow a card from print request to approval without an account, and that
+  // walkthrough is most of what the page is for.
+  //
+  // Two things are not public. Personal details — users, supporters, creator
+  // applications — belong to people who never agreed to appear on a page
+  // anyone can open. And every state-changing route, because /fulfillment
+  // advances a card through the print queue on nothing but a tokenId, and
+  // /confirm-all sends a transaction from the admin wallet. Reading the flow
+  // is the point; driving it from outside is not.
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
+    // The door itself, or it could never be opened.
+    if (pathname === "/api/admin/unlock") return NextResponse.next();
+
+    const holdsPersonalData = ADMIN_PRIVATE.some((p) => pathname.startsWith(p));
+    const changesState = req.method !== "GET" && pathname.startsWith("/api/admin");
+    if (!holdsPersonalData && !changesState) return NextResponse.next();
+
     if (await adminCookieValid(req.cookies.get(ADMIN_COOKIE_NAME)?.value)) {
       return NextResponse.next();
     }
 
-    if (!basicAuthOk(req.headers.get("authorization"))) {
-      return adminChallenge(pathname);
+    // Basic is still accepted so `curl -u` works from a terminal, but it is
+    // never advertised, so no browser dialog appears.
+    if (basicAuthOk(req.headers.get("authorization"))) {
+      const response = NextResponse.next();
+      const token = await mintAdminCookie();
+      if (token) {
+        response.cookies.set(ADMIN_COOKIE_NAME, token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          maxAge: ADMIN_MAX_AGE,
+        });
+      }
+      return response;
     }
 
-    const response = NextResponse.next();
-    const token = await mintAdminCookie();
-    if (token) {
-      response.cookies.set(ADMIN_COOKIE_NAME, token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: ADMIN_MAX_AGE,
-      });
-    }
-    return response;
+    return adminLocked();
   }
 
   // API routes: session-based auth (except public APIs and auth endpoints)
