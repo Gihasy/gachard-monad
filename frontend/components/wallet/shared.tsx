@@ -158,12 +158,38 @@ export function CardFrame({
         </div>
 
         <div className="px-1">
-          <p className="text-xs font-medium text-white truncate" title={card.templateName ?? ""}>
-            {card.templateName ?? `Card #${card.tokenId}`}
+          {/*
+            The same identifier /collection puts on the same card.
+
+            These tiles used to lead with the template name and show the token
+            id, while CardItem leads with the card id. Two different numbers for
+            one card depending on which page you were looking at, and the card
+            id is the one that matters elsewhere: it is what /scan takes, what
+            redeem asks for, and what the QR encodes.
+
+            The token id stays alongside it, because this is the page where a
+            card is moved on chain and that is the number the signing dialog and
+            the explorer will show. The template name is in the tooltip.
+          */}
+          <p
+            className="text-xs font-medium text-white truncate"
+            title={card.templateName ?? ""}
+            data-testid={`${testIdPrefix}-label-${card.tokenId}`}
+          >
+            {card.cardId
+              ? `Card ID: #${card.cardId}`
+              : card.tokenId !== null
+                ? `Card #${card.tokenId}`
+                : card.templateId}
           </p>
           <div className="flex flex-wrap items-center justify-between gap-1 mt-1">
             <span className={`tag tag-${label.toLowerCase()} text-[0.55rem]`}>{label}</span>
-            <span className="text-[0.55rem] text-white/40 whitespace-nowrap">#{card.tokenId}</span>
+            <span
+              className="text-[0.55rem] text-white/40 whitespace-nowrap"
+              title="On-chain token id"
+            >
+              Token #{card.tokenId}
+            </span>
           </div>
         </div>
       </button>
