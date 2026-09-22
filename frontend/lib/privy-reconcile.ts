@@ -54,6 +54,35 @@ const CLEAR_EXPORT_CYCLE = {
   importUserOpHash: "",
 };
 
+/**
+ * Mark a sponsored import's history row as confirmed.
+ *
+ * Matched by the Privy transaction id when the card still carries one, and
+ * otherwise by the newest pending import for that token — a card whose
+ * importTxId was lost still has a row that should not say "Processing".
+ */
+async function settleImportTransaction(importTxId: string | undefined, tokenId: number) {
+  const txs = await getCollection("transactions");
+  const now = new Date().toISOString();
+
+  if (importTxId) {
+    const byId = await txs.updateOne(
+      { privyTxId: importTxId, status: "pending" },
+      { $set: { status: "confirmed", updatedAt: now } }
+    );
+    if (byId.matchedCount > 0) return;
+  }
+
+  // findOneAndUpdate, not updateOne: the driver ignores a sort on updateOne,
+  // and without one an older failed attempt could be the row that gets
+  // settled instead of the current return.
+  await txs.findOneAndUpdate(
+    { type: "privy_import", tokenId, status: "pending" },
+    { $set: { status: "confirmed", updatedAt: now } },
+    { sort: { createdAt: -1 } }
+  );
+}
+
 export async function reconcileExportedCard(card: CardDoc): Promise<ReconcileResult> {
   const cards = await getCollection("cards");
   const label = card.cardId ?? String(card._id);
@@ -77,6 +106,9 @@ export async function reconcileExportedCard(card: CardDoc): Promise<ReconcileRes
   // Covers an import that confirmed unobserved, and an export whose transfer
   // never actually landed.
   if (custodialHolds && card.status === "Exported") {
+    // Read before the unset below clears it.
+    const importTxId = card.importTxId;
+
     await cards.updateOne(
       { _id: card._id },
       {
@@ -84,6 +116,15 @@ export async function reconcileExportedCard(card: CardDoc): Promise<ReconcileRes
         $unset: CLEAR_EXPORT_CYCLE,
       }
     );
+
+    // The history row has to move with the card. A sponsored transfer is
+    // recorded with txHash null, because Privy answers with a transaction id
+    // and the hash does not exist yet, so the generic confirmer in /api/cards
+    // skips it — it only looks at rows that already have a hash. Left alone
+    // the row reads "Processing" forever while the card sits happily back in
+    // the collection, which is what a user actually notices.
+    await settleImportTransaction(importTxId, tokenId);
+
     return { cardId: label, changed: true, from, to: "Digital", reason: "custodial wallet holds the token" };
   }
 
@@ -176,8 +217,16 @@ export async function reconcileExportedCard(card: CardDoc): Promise<ReconcileRes
  *
  * Bounded because each card costs at least one RPC read and these routes run
  * under maxDuration = 10 (ADR-018), the same reason confirm-all batches.
+ *
+ * Scoped by custodial address, not by user id. This took a `userId` and
+ * filtered `query.userId`, but no card document has ever had that field —
+ * cards are keyed to their owner by `ownerAddress` — so every scoped call
+ * matched nothing and silently reconciled zero cards.
  */
-export async function reconcileExportedCards(limit = 10, userId?: string): Promise<ReconcileResult[]> {
+export async function reconcileExportedCards(
+  limit = 10,
+  ownerAddress?: string
+): Promise<ReconcileResult[]> {
   const cards = await getCollection("cards");
   // exportPending and a lingering privyWalletAddress are what make a lost
   // post-transfer write discoverable. Without them a drifted card still reads
@@ -190,7 +239,7 @@ export async function reconcileExportedCards(limit = 10, userId?: string): Promi
       { privyWalletAddress: { $exists: true } },
     ],
   };
-  if (userId) query.userId = userId;
+  if (ownerAddress) query.ownerAddress = ownerAddress;
 
   const candidates = (await cards
     .find(query)

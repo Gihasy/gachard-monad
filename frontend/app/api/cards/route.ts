@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
 import { confirmTransaction } from "@/lib/transactions";
 import { getAuthenticatedUser } from "@/lib/session";
+import { reconcileExportedCards } from "@/lib/privy-reconcile";
 
 /**
  * Derive user-facing display status from fulfillmentStatus.
@@ -40,6 +41,28 @@ export async function GET(request: Request) {
       await Promise.allSettled(
         pendingTxs.map((tx) => confirmTransaction(tx._id.toString()))
       );
+    }
+
+    // Sponsored Privy transfers are invisible to the pass above: they are
+    // written with txHash null, because Privy answers with a transaction id
+    // and the hash only exists once the bundler lands it. So the filter skips
+    // them and confirmTransaction would bail on the missing hash anyway.
+    //
+    // Settling them used to depend entirely on the client polling
+    // /api/privy/status while the return dialog was open. Close the tab, lose
+    // signal, and nothing ever looked again: the card stayed "Exported" and
+    // its history row stayed "Processing" permanently. reconcileExportedCards
+    // only moves MongoDB towards what the chain already says and never sends a
+    // transaction, so running it here is safe and idempotent.
+    //
+    // Bounded to three: each card costs at least one RPC read and this route
+    // runs under the same maxDuration as the rest (ADR-018). Failures are
+    // swallowed on purpose — a repair that cannot run is not a reason to fail
+    // a user's collection.
+    try {
+      await reconcileExportedCards(3, user.walletAddress);
+    } catch (e) {
+      console.warn("[cards] privy reconcile skipped:", e);
     }
 
     // Fetch cards (possibly updated by reconciliation above)
