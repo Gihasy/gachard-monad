@@ -42,11 +42,7 @@ export default function WalletPage() {
         </Link>
       }
     >
-      {/* Wide enough for the three-card grid to breathe, narrow enough that
-          the explanatory copy in each section stays a comfortable measure. */}
-      <div className="max-w-3xl">
-        <WalletWorkspace />
-      </div>
+      <WalletWorkspace />
     </PageShell>
   );
 }

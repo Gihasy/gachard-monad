@@ -141,7 +141,7 @@ function Workspace() {
 
   if (!ready) {
     return (
-      <div className="glass p-6">
+      <div className="glass p-6 max-w-xl">
         <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
           Loading…
         </p>
@@ -151,7 +151,7 @@ function Workspace() {
 
   if (!authenticated || !address) {
     return (
-      <div className="glass p-6" data-testid="wallet-setup-card">
+      <div className="glass p-6 sm:p-8 max-w-xl" data-testid="wallet-setup-card">
         <Eyebrow>Get started</Eyebrow>
         <h2 className="text-lg mb-2" style={{ fontFamily: "var(--font-display)" }}>
           A wallet only you control
@@ -169,245 +169,260 @@ function Workspace() {
 
   return (
     <div className="space-y-6">
-      {/* Identity */}
-      <section className="glass p-6" data-testid="wallet-identity">
-        <Eyebrow
-          right={
-            <a
-              href={`${EXPLORER}${address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[0.7rem] transition-all hover:brightness-125"
-              style={{ color: "var(--electric-blue)" }}
-            >
-              Explorer ↗
-            </a>
-          }
-        >
-          Your wallet
-        </Eyebrow>
-        <div className="card-surface px-4 py-3 flex items-center gap-3">
-          <p
-            className="text-[0.8rem] font-mono break-all flex-1"
-            style={{ color: "var(--text-secondary)" }}
-            data-testid="wallet-address"
-          >
-            {address}
-          </p>
-          <button
-            onClick={() => {
-              navigator.clipboard?.writeText(address).then(
-                () => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1600);
-                },
-                () => {}
-              );
-            }}
-            className="btn-ghost !py-1.5 !px-3 !text-[0.6rem] shrink-0"
-            data-testid="wallet-copy"
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
-      </section>
-
-      {/* Permission */}
-      <section className="glass p-6" data-testid="wallet-access">
-        <Eyebrow
-          right={
-            <span
-              className="chip !py-1 !px-3 !text-[0.6rem]"
-              style={{
-                borderColor: delegated ? "rgba(0,204,255,0.3)" : "rgba(255,196,102,0.3)",
-                color: delegated ? "var(--electric-blue)" : "var(--aurora-gold)",
-              }}
-              data-testid="delegation-state"
-            >
-              <span
-                className="chip-dot"
-                style={{
-                  background: delegated ? "var(--electric-blue)" : "var(--aurora-gold)",
-                  boxShadow: `0 0 8px ${delegated ? "var(--electric-blue)" : "var(--aurora-gold)"}`,
-                }}
-              />
-              {delegated ? "Allowed" : "Not allowed"}
-            </span>
-          }
-        >
-          Gachard access
-        </Eyebrow>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-tertiary)" }}>
-          {delegated
-            ? "Gachard can move cards in this wallet on your behalf, which is what lets a card come back to your collection. Withdraw it whenever you like."
-            : "Allow Gachard to move cards in this wallet, so a card you take out can be returned later. Without it, a card that leaves cannot come back."}
-        </p>
-        {!SIGNER_ID && (
-          <p className="text-xs mb-3" style={{ color: "var(--aurora-pink)" }}>
-            Not configured on this deployment.
-          </p>
-        )}
-        <button
-          onClick={async () => {
-            setBusy("perm");
-            setErr(null);
-            setNote(null);
-            try {
-              if (delegated) {
-                await removeSigners({ address });
-                setNote("Access withdrawn.");
-              } else {
-                await addSigners({ address, signers: [{ signerId: SIGNER_ID }] });
-                setNote("Access granted.");
-              }
-            } catch (e) {
-              console.error("[privy] permission change failed:", e);
-              setErr(e instanceof Error ? e.message : "Could not change access.");
-            } finally {
-              setBusy(null);
+      {/*
+        Two columns on wide screens. The settings-shaped blocks are narrow by
+        nature and the cards are the reason to be here, so the cards take the
+        larger side; a single centred column left most of the viewport empty.
+        Stacks in reading order on small screens: who you are, what Gachard
+        may do, then your cards.
+      */}
+      <div className="grid gap-6 items-start lg:grid-cols-[21rem_minmax(0,1fr)]">
+        <div className="space-y-6">
+        {/* Identity */}
+        <section className="glass p-6" data-testid="wallet-identity">
+          <Eyebrow
+            right={
+              <a
+                href={`${EXPLORER}${address}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[0.7rem] transition-all hover:brightness-125"
+                style={{ color: "var(--electric-blue)" }}
+              >
+                Explorer ↗
+              </a>
             }
-          }}
-          disabled={busy !== null || !SIGNER_ID}
-          className={`${delegated ? "btn-ghost" : "btn-primary"} !py-2.5 !px-6 !text-xs disabled:opacity-50`}
-          data-testid="delegation-toggle"
-        >
-          {busy === "perm" ? "…" : delegated ? "Withdraw access" : "Allow"}
-        </button>
-      </section>
+          >
+            Your wallet
+          </Eyebrow>
+          <div className="card-surface px-4 py-3 flex items-center gap-3">
+            <p
+              className="text-[0.8rem] font-mono break-all flex-1"
+              style={{ color: "var(--text-secondary)" }}
+              data-testid="wallet-address"
+            >
+              {address}
+            </p>
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(address).then(
+                  () => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1600);
+                  },
+                  () => {}
+                );
+              }}
+              className="btn-ghost !py-1.5 !px-3 !text-[0.6rem] shrink-0"
+              data-testid="wallet-copy"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </section>
 
-      {/* Cards held here */}
-      <section data-testid="wallet-cards">
-        <Eyebrow
-          right={
-            cards.length > 0 ? (
-              <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
-                {cards.length} {cards.length === 1 ? "card" : "cards"}
+        {/* Permission */}
+        <section className="glass p-6" data-testid="wallet-access">
+          <Eyebrow
+            right={
+              <span
+                className="chip !py-1 !px-3 !text-[0.6rem]"
+                style={{
+                  borderColor: delegated ? "rgba(0,204,255,0.3)" : "rgba(255,196,102,0.3)",
+                  color: delegated ? "var(--electric-blue)" : "var(--aurora-gold)",
+                }}
+                data-testid="delegation-state"
+              >
+                <span
+                  className="chip-dot"
+                  style={{
+                    background: delegated ? "var(--electric-blue)" : "var(--aurora-gold)",
+                    boxShadow: `0 0 8px ${delegated ? "var(--electric-blue)" : "var(--aurora-gold)"}`,
+                  }}
+                />
+                {delegated ? "Allowed" : "Not allowed"}
               </span>
-            ) : undefined
-          }
-        >
-          Cards in this wallet
-        </Eyebrow>
-
-        {loading ? (
-          <div className="glass p-6">
-            <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
-              Loading…
+            }
+          >
+            Gachard access
+          </Eyebrow>
+          <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-tertiary)" }}>
+            {delegated
+              ? "Gachard can move cards in this wallet on your behalf, which is what lets a card come back to your collection. Withdraw it whenever you like."
+              : "Allow Gachard to move cards in this wallet, so a card you take out can be returned later. Without it, a card that leaves cannot come back."}
+          </p>
+          {!SIGNER_ID && (
+            <p className="text-xs mb-3" style={{ color: "var(--aurora-pink)" }}>
+              Not configured on this deployment.
             </p>
-          </div>
-        ) : cards.length === 0 ? (
-          <div className="glass p-8 text-center">
-            <p className="text-3xl mb-3" style={{ color: "var(--border-strong)" }}>
-              ◆
-            </p>
-            <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
-              None yet. Move a card here from your collection.
-            </p>
-          </div>
-        ) : (
-          <>
-            <ul className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {cards.map((c) => {
-                const id = c.cardId ?? String(c.tokenId);
-                const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
-                const addr = (sendTo[id] ?? "").trim();
-                return (
-                  <li key={id} className="card-surface glass-hover p-3 flex flex-col">
-                    <div
-                      className={`relative w-full rounded-xl overflow-hidden mb-3 bg-white/5 ${RARITY_GLOW[c.rarity] ?? ""}`}
-                      style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
-                      data-testid={`wallet-card-visual-${c.tokenId}`}
-                    >
-                      {c.artworkUrl ? (
-                        <Image
-                          src={c.artworkUrl}
-                          alt={c.templateName ?? c.templateId ?? `Card ${c.tokenId}`}
-                          fill
-                          sizes="(max-width:640px) 45vw, 20vw"
-                          className="object-contain"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="text-3xl" style={{ color: "var(--border-strong)" }}>
-                            ◆
-                          </span>
-                        </div>
-                      )}
-                    </div>
+          )}
+          <button
+            onClick={async () => {
+              setBusy("perm");
+              setErr(null);
+              setNote(null);
+              try {
+                if (delegated) {
+                  await removeSigners({ address });
+                  setNote("Access withdrawn.");
+                } else {
+                  await addSigners({ address, signers: [{ signerId: SIGNER_ID }] });
+                  setNote("Access granted.");
+                }
+              } catch (e) {
+                console.error("[privy] permission change failed:", e);
+                setErr(e instanceof Error ? e.message : "Could not change access.");
+              } finally {
+                setBusy(null);
+              }
+            }}
+            disabled={busy !== null || !SIGNER_ID}
+            className={`${delegated ? "btn-ghost" : "btn-primary"} !py-2.5 !px-6 !text-xs disabled:opacity-50`}
+            data-testid="delegation-toggle"
+          >
+            {busy === "perm" ? "…" : delegated ? "Withdraw access" : "Allow"}
+          </button>
+        </section>
 
-                    <p
-                      className="text-[0.78rem] leading-tight truncate"
-                      title={c.templateName ?? ""}
-                    >
-                      {c.templateName ?? `Card #${c.tokenId}`}
-                    </p>
-                    <p
-                      className="text-[0.6rem] uppercase tracking-[0.12em] mb-3"
-                      style={{ color: colour }}
-                    >
-                      {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
-                    </p>
+        </div>
 
-                    <button
-                      onClick={() =>
-                        act(
-                          `return-${id}`,
-                          post("/api/privy/import", { cardId: c.cardId }),
-                          "On its way back to your collection."
-                        )
-                      }
-                      disabled={busy !== null}
-                      className="btn-ghost !py-2 !px-2 !text-[0.62rem] w-full disabled:opacity-50"
-                      data-testid={`wallet-return-${c.tokenId}`}
-                    >
-                      {busy === `return-${id}` ? busyLabel("return") : "Return to Gachard"}
-                    </button>
+        {/* Cards held here */}
+        <section data-testid="wallet-cards">
+          <Eyebrow
+            right={
+              cards.length > 0 ? (
+                <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
+                  {cards.length} {cards.length === 1 ? "card" : "cards"}
+                </span>
+              ) : undefined
+            }
+          >
+            Cards in this wallet
+          </Eyebrow>
 
-                    {/* Irreversible, so it is set apart by a rule rather than
-                        sitting flush with the reversible action above it. */}
-                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                      <div className="form-field">
-                        <input
-                          value={sendTo[id] ?? ""}
-                          onChange={(e) => setSendTo((s) => ({ ...s, [id]: e.target.value }))}
-                          placeholder="0x… send elsewhere"
-                          spellCheck={false}
-                          className="!text-[0.62rem] !py-2 !px-2.5 !rounded-lg font-mono"
-                          data-testid={`wallet-send-input-${c.tokenId}`}
-                        />
+          {loading ? (
+            <div className="glass p-6">
+              <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+                Loading…
+              </p>
+            </div>
+          ) : cards.length === 0 ? (
+            <div className="glass p-8 text-center">
+              <p className="text-3xl mb-3" style={{ color: "var(--border-strong)" }}>
+                ◆
+              </p>
+              <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+                None yet. Move a card here from your collection.
+              </p>
+            </div>
+          ) : (
+            <>
+              <ul className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+                {cards.map((c) => {
+                  const id = c.cardId ?? String(c.tokenId);
+                  const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
+                  const addr = (sendTo[id] ?? "").trim();
+                  return (
+                    <li key={id} className="card-surface glass-hover p-3 flex flex-col">
+                      <div
+                        className={`relative w-full rounded-xl overflow-hidden mb-3 bg-white/5 ${RARITY_GLOW[c.rarity] ?? ""}`}
+                        style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
+                        data-testid={`wallet-card-visual-${c.tokenId}`}
+                      >
+                        {c.artworkUrl ? (
+                          <Image
+                            src={c.artworkUrl}
+                            alt={c.templateName ?? c.templateId ?? `Card ${c.tokenId}`}
+                            fill
+                            sizes="(max-width:640px) 45vw, 20vw"
+                            className="object-contain"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <span className="text-3xl" style={{ color: "var(--border-strong)" }}>
+                              ◆
+                            </span>
+                          </div>
+                        )}
                       </div>
+
+                      <p
+                        className="text-[0.78rem] leading-tight truncate"
+                        title={c.templateName ?? ""}
+                      >
+                        {c.templateName ?? `Card #${c.tokenId}`}
+                      </p>
+                      <p
+                        className="text-[0.6rem] uppercase tracking-[0.12em] mb-3"
+                        style={{ color: colour }}
+                      >
+                        {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
+                      </p>
+
                       <button
                         onClick={() =>
                           act(
-                            `send-${id}`,
-                            post("/api/privy/send", { cardId: c.cardId, to: addr }),
-                            "Sent. This card has left Gachard for good."
+                            `return-${id}`,
+                            post("/api/privy/import", { cardId: c.cardId }),
+                            "On its way back to your collection."
                           )
                         }
-                        disabled={busy !== null || !addr}
-                        className="w-full mt-2 py-2 text-[0.62rem] rounded-xl transition-all disabled:opacity-40"
-                        style={{
-                          background: addr ? "rgba(255,107,186,0.12)" : "rgba(255,255,255,0.04)",
-                          border: `1px solid ${addr ? "rgba(255,107,186,0.35)" : "var(--border-subtle)"}`,
-                          color: addr ? "var(--aurora-pink)" : "var(--text-tertiary)",
-                        }}
-                        data-testid={`wallet-send-${c.tokenId}`}
+                        disabled={busy !== null}
+                        className="btn-ghost !py-2 !px-2 !text-[0.62rem] w-full disabled:opacity-50"
+                        data-testid={`wallet-return-${c.tokenId}`}
                       >
-                        {busy === `send-${id}` ? busyLabel("send") : "Send away"}
+                        {busy === `return-${id}` ? busyLabel("return") : "Return to Gachard"}
                       </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="text-[0.65rem] mt-3" style={{ color: "var(--text-tertiary)" }}>
-              Sending a card elsewhere is permanent. Gachard cannot bring it back.
-            </p>
-          </>
-        )}
-      </section>
 
-      {/* Full control */}
+                      {/* Irreversible, so it is set apart by a rule rather than
+                          sitting flush with the reversible action above it. */}
+                      <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                        <div className="form-field">
+                          <input
+                            value={sendTo[id] ?? ""}
+                            onChange={(e) => setSendTo((s) => ({ ...s, [id]: e.target.value }))}
+                            placeholder="0x… send elsewhere"
+                            spellCheck={false}
+                            className="!text-[0.62rem] !py-2 !px-2.5 !rounded-lg font-mono"
+                            data-testid={`wallet-send-input-${c.tokenId}`}
+                          />
+                        </div>
+                        <button
+                          onClick={() =>
+                            act(
+                              `send-${id}`,
+                              post("/api/privy/send", { cardId: c.cardId, to: addr }),
+                              "Sent. This card has left Gachard for good."
+                            )
+                          }
+                          disabled={busy !== null || !addr}
+                          className="w-full mt-2 py-2 text-[0.62rem] rounded-xl transition-all disabled:opacity-40"
+                          style={{
+                            background: addr ? "rgba(255,107,186,0.12)" : "rgba(255,255,255,0.05)",
+                            border: `1px solid ${addr ? "rgba(255,107,186,0.35)" : "var(--border-strong)"}`,
+                            color: addr ? "var(--aurora-pink)" : "var(--text-tertiary)",
+                          }}
+                          data-testid={`wallet-send-${c.tokenId}`}
+                        >
+                          {busy === `send-${id}` ? busyLabel("send") : "Send away"}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-[0.65rem] mt-3" style={{ color: "var(--text-tertiary)" }}>
+                Sending a card elsewhere is permanent. Gachard cannot bring it back.
+              </p>
+            </>
+          )}
+        </section>
+
+      </div>
+
+      {/* Full control. Full width rather than in the sidebar: on a phone it
+          would otherwise sit between the access card and the cards, putting a
+          destructive action in the middle of the reading path. */}
       <section
         className="glass p-6"
         style={{ borderColor: "rgba(255,107,186,0.18)" }}
