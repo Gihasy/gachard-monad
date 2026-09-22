@@ -303,6 +303,20 @@ The ids were not secret. `GET /api/marketplace/listings` is in `PUBLIC_API` and 
 
 **The rule this leaves**: a public endpoint returns a document only through an explicit field list or an explicit removal. `{ ...doc }` from a collection is how this happened, and it will be how it happens again.
 
+**Amendment, 23 September 2026: an explicit field list is not enough if the list itself names people.**
+
+The rule above was being followed and still leaking. The public admin endpoints all built explicit objects — and those objects named `email`, `recipientName`, `phone`, `addressLine1`, `postalCode`, `ownerAddress`, `ownerUsername`, `userId` and the decrypted `redeemCode`. Verified against production with no credentials at all: `GET /api/admin/print-requests` returned a real email address, and the schema publishes a recipient's name, phone number and home address for every print request made.
+
+The redeem code was the worst of them. Redemption sends the card to whoever is logged in when the code is entered (ADR-007) — deliberately, because a physical card can change hands, which makes the code the bearer credential for that card. Publishing it beside the card id handed the card to anyone who opened the URL.
+
+**Decision**: the admin console answers two audiences from one address. The flow is public — token, card, rarity, status, whether a redeem code exists and whether it has been accepted, the whole print-to-approval walkthrough the console exists to show. The people in that flow are not. `proxy.ts` already verifies the admin cookie, so it now states the result in an `x-gachard-admin` request header, and routes include the personal half of their field list only when it is set. The header is deleted from every incoming request before the gate sets it; otherwise sending it by hand would be indistinguishable from the gate's own word.
+
+Fields are omitted rather than nulled. Absent is the honest shape: not withheld pending something, simply not sent.
+
+**Consequence**: this is a second tier, not a second gate. Nothing that was public became private — `/admin` and its read-only routes still answer a stranger, which is the whole reason the console is open (ADR-032 did not cover this; the admin console tiering was added on 22 September and this completes it).
+
+**Verified**: 68 suite checks, six of them new — each public admin endpoint carries none of ten personal keys, a forged `x-gachard-admin` header is ignored, and an authenticated admin still receives the fields.
+
 **Consequence, migration**: none for current users. Both Google (`api/auth/google`) and demo (`api/auth/demo`) login already issued the signed httpOnly cookie, so the fallback was serving nobody. A browser carrying only the uid cookie is asked to sign in again.
 
 **Consequence, one mechanism to reason about**: pages and APIs are now gated identically. The earlier split — signed token for APIs, cookie presence for pages — is the kind of asymmetry that reads as deliberate and is easy to extend wrongly. Any page that renders server-side data now sits behind the same verification the data does.

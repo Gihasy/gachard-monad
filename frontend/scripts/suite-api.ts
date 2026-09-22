@@ -251,6 +251,59 @@ function group(title: string) { results.push(`\n${title}`); }
   group("J. Removed surfaces");
   check("the advanced-access endpoint is gone", (await get("/api/user/advanced", session)).status === 404);
 
+  // ================= J2. the public admin tier =================
+  // The console is public so the print flow can be followed without an
+  // account. It was also returning the buyer's email, the recipient's name,
+  // phone and home address, and the decrypted redeem code — which is the
+  // bearer credential for a physical card (ADR-007), so publishing it handed
+  // the card to anyone who asked.
+  group("J2. Public admin endpoints carry no people");
+  const PUBLIC_ADMIN = [
+    "/api/admin/print-requests",
+    "/api/admin/transactions",
+    "/api/admin/cards",
+    "/api/admin/pending-cards",
+  ];
+  const PERSONAL = [
+    '"email"', '"recipientName"', '"phone"', '"addressLine1"', '"postalCode"',
+    '"redeemCode"', '"userId"', '"ownerAddress"', '"ownerUsername"', '"redeemer"',
+  ];
+  for (const path of PUBLIC_ADMIN) {
+    const body = await (await get(path)).text();
+    const leaked = PERSONAL.filter((k) => body.includes(k));
+    check(`${path} leaks nothing personal`, leaked.length === 0, leaked.join(" "));
+  }
+
+  // The marker the proxy sets is an ordinary header, so it has to be stripped
+  // from every incoming request. Without that, typing it into curl would be
+  // indistinguishable from the gate's own word and the lock would be decor.
+  const forged = await fetch(`${BASE}/api/admin/print-requests`, {
+    headers: { "x-gachard-admin": "1" },
+  });
+  const forgedBody = await forged.text();
+  check(
+    "a forged x-gachard-admin header is ignored",
+    PERSONAL.every((k) => !forgedBody.includes(k)),
+    PERSONAL.filter((k) => forgedBody.includes(k)).join(" ")
+  );
+
+  // And the fields are withheld, not deleted: a real admin still gets them.
+  if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
+    const basic =
+      "Basic " +
+      Buffer.from(`${process.env.ADMIN_USERNAME}:${process.env.ADMIN_PASSWORD}`).toString("base64");
+    const asAdmin = await fetch(`${BASE}/api/admin/print-requests`, {
+      headers: { authorization: basic },
+    });
+    const adminBody = await asAdmin.text();
+    const hasRows = adminBody.includes('"txId"');
+    check(
+      "an authenticated admin still gets the personal fields",
+      !hasRows || adminBody.includes('"shippingAddress"'),
+      hasRows ? "rows present but shippingAddress absent" : "no rows to judge"
+    );
+  }
+
   // ================= K0. the on-demand reconcile =================
   // The branch it exists for — a card moved into the wallet from outside
   // Gachard — cannot be built here: it needs an address that really holds a

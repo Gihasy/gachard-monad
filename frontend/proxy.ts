@@ -13,6 +13,22 @@ const SESSION_COOKIE_NAME = "gachard_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 const ADMIN_COOKIE_NAME = "gachard_admin";
+
+/**
+ * How a route learns that an unlocked admin is asking.
+ *
+ * The public admin endpoints have to answer two audiences from one URL: a
+ * stranger following the print flow, who should see the flow and nothing
+ * about the people in it, and a signed-in admin, who needs the address the
+ * parcel is going to. Rather than each route re-implementing the cookie
+ * check, the gate that already does it says so in a header.
+ *
+ * A caller can send any header they like, so this one is deleted from every
+ * incoming request before it is ever set. Without that, typing
+ * `-H "x-gachard-admin: 1"` into curl would be indistinguishable from the
+ * proxy's own word, and the lock would be decorative.
+ */
+const ADMIN_HEADER = "x-gachard-admin";
 const ADMIN_MAX_AGE = 60 * 60 * 8; // one working session
 
 /**
@@ -209,16 +225,35 @@ export async function proxy(req: NextRequest) {
 
     const holdsPersonalData = ADMIN_PRIVATE.some((p) => pathname.startsWith(p));
     const changesState = req.method !== "GET" && pathname.startsWith("/api/admin");
-    if (!holdsPersonalData && !changesState) return NextResponse.next();
 
-    if (await adminCookieValid(req.cookies.get(ADMIN_COOKIE_NAME)?.value)) {
-      return NextResponse.next();
+    // Stripped first, always, so it can only ever mean what this gate decided.
+    const headers = new Headers(req.headers);
+    headers.delete(ADMIN_HEADER);
+
+    // Both ways in are resolved before anything returns. The first version
+    // decided the public tier on the cookie alone and returned there, so a
+    // `curl -u` against a public route was treated as a stranger and got the
+    // redacted answer while believing it had authenticated.
+    //
+    // Basic is still accepted so a terminal works, but never advertised, so no
+    // browser dialog appears over an otherwise public page.
+    const cookieOk = await adminCookieValid(req.cookies.get(ADMIN_COOKIE_NAME)?.value);
+    const basicOk = !cookieOk && basicAuthOk(req.headers.get("authorization"));
+    if (cookieOk || basicOk) headers.set(ADMIN_HEADER, "1");
+
+    // The public tier. Still marked when an admin is signed in, because these
+    // routes answer both audiences: the flow is public, the people in it are
+    // not.
+    if (!holdsPersonalData && !changesState) {
+      return NextResponse.next({ request: { headers } });
     }
 
-    // Basic is still accepted so `curl -u` works from a terminal, but it is
-    // never advertised, so no browser dialog appears.
-    if (basicAuthOk(req.headers.get("authorization"))) {
-      const response = NextResponse.next();
+    if (cookieOk) {
+      return NextResponse.next({ request: { headers } });
+    }
+
+    if (basicOk) {
+      const response = NextResponse.next({ request: { headers } });
       const token = await mintAdminCookie();
       if (token) {
         response.cookies.set(ADMIN_COOKIE_NAME, token, {

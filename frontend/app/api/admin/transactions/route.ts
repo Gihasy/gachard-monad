@@ -2,8 +2,18 @@ import { NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
 import { generateInvoiceId } from "@/lib/invoice";
 import { friendlyTxStatus } from "@/lib/status-map";
+import { adminOnly, isUnlockedAdmin } from "@/lib/admin-tier";
 
-export async function GET() {
+/**
+ * `userId` is a user's MongoDB ObjectId. ADR-032 removed exactly that
+ * identifier from the public marketplace response, and this route was still
+ * publishing one per transaction.
+ *
+ * `rawId` stays public: it is the transaction's own id, it grants nothing,
+ * and the invoice id beside it is derived from it anyway.
+ */
+export async function GET(request: Request) {
+  const unlocked = isUnlockedAdmin(request);
   try {
     const txCollection = await getCollection("transactions");
     const txs = await txCollection
@@ -21,7 +31,7 @@ export async function GET() {
       type: tx.type,
       tokenId: tx.tokenId ?? null,
       tokenIds: tx.tokenIds ?? null,
-      userId: tx.userId,
+      ...adminOnly(unlocked, { userId: tx.userId }),
       fromAddress: tx.fromAddress,
       toAddress: tx.toAddress,
       createdAt: tx.createdAt,

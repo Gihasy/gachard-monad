@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { adminOnly, isUnlockedAdmin } from "@/lib/admin-tier";
 import { getCollection } from "@/lib/mongodb";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Which card is where is the flow. Whose it is, is not.
+  const unlocked = isUnlockedAdmin(request);
   try {
     const cardsCollection = await getCollection("cards");
     const usersCollection = await getCollection("users");
@@ -29,8 +32,10 @@ export async function GET() {
       rarity: c.rarity,
       status: c.status || "pending",
       fulfillmentStatus: c.fulfillmentStatus || null,
-      ownerAddress: c.ownerAddress,
-      ownerUsername: c.ownerAddress ? addressToUsername.get(c.ownerAddress.toLowerCase()) || null : null,
+      ...adminOnly(unlocked, {
+        ownerAddress: c.ownerAddress,
+        ownerUsername: c.ownerAddress ? addressToUsername.get(c.ownerAddress.toLowerCase()) || null : null,
+      }),
       createdAt: c.createdAt,
     }));
 

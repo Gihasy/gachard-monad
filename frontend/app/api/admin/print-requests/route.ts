@@ -2,11 +2,29 @@ import { NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
 import { decrypt } from "@/lib/crypto";
 import { generateInvoiceId } from "@/lib/invoice";
+import { adminOnly, isUnlockedAdmin } from "@/lib/admin-tier";
 
 /**
- * Admin endpoint: list all print requests with decrypted redeem codes.
+ * List print requests. Public as far as the flow goes; private as far as the
+ * people in it go.
+ *
+ * This route is deliberately readable without an account, because following a
+ * card from print request to approval is most of what the console is for. It
+ * was also returning, to anyone who opened the URL: the buyer's email address,
+ * the recipient's name, their phone number, their home address, and the
+ * decrypted redeem code.
+ *
+ * The code is the worst of those. Redemption sends the card to whoever is
+ * logged in when it is entered (ADR-007) — the code is the bearer credential
+ * for a physical card, deliberately, because a physical card can change hands.
+ * Publishing it handed the card to anyone who asked.
+ *
+ * The flow stays visible: token, card, rarity, status, whether a code exists
+ * and whether it has been accepted. The people do not.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const unlocked = isUnlockedAdmin(request);
+
   try {
     const txCollection = await getCollection("transactions");
     const codesCollection = await getCollection("redeem_codes");
@@ -78,28 +96,33 @@ export async function GET() {
           txId: generateInvoiceId(tx._id.toString()),
           rawTxId: tx._id.toString(),
           tokenId: tx.tokenId,
-          redeemCode,
+          // Whether a code exists and where it stands is part of the flow.
+          // The code itself is the card.
+          hasRedeemCode: !!redeemCode,
           codeStatus,
           accepted: !!accepted,
-          redeemer,
           fulfillmentStatus: card?.fulfillmentStatus || null,
-          shippingAddress: shipping
-            ? {
-                recipientName: shipping.recipientName,
-                addressLine1: shipping.addressLine1,
-                addressLine2: shipping.addressLine2 || "",
-                city: shipping.city,
-                postalCode: shipping.postalCode,
-                phone: shipping.phone,
-              }
-            : null,
-          user: user
-            ? {
-                email: user.email,
-                username: user.username,
-                walletAddress: user.walletAddress,
-              }
-            : null,
+          ...adminOnly(unlocked, {
+            redeemCode,
+            redeemer,
+            shippingAddress: shipping
+              ? {
+                  recipientName: shipping.recipientName,
+                  addressLine1: shipping.addressLine1,
+                  addressLine2: shipping.addressLine2 || "",
+                  city: shipping.city,
+                  postalCode: shipping.postalCode,
+                  phone: shipping.phone,
+                }
+              : null,
+            user: user
+              ? {
+                  email: user.email,
+                  username: user.username,
+                  walletAddress: user.walletAddress,
+                }
+              : null,
+          }),
           card: card
             ? {
                 cardId: card.cardId || null,

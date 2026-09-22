@@ -21,7 +21,7 @@ type AdminTx = {
   type: string;
   tokenId: number | null;
   tokenIds: number[] | null;
-  userId: string;
+  userId?: string;
   fromAddress: string;
   toAddress: string;
   createdAt: string;
@@ -41,8 +41,10 @@ type AdminCard = {
   rarity: number;
   status: string;
   fulfillmentStatus: string | null;
-  ownerAddress: string;
-  ownerUsername: string | null;
+  // Absent unless an admin is signed in — the server withholds them rather
+  // than sending null, so the key itself is missing.
+  ownerAddress?: string;
+  ownerUsername?: string | null;
   createdAt: string;
 };
 
@@ -59,14 +61,15 @@ type PrintRequest = {
   txId: string;
   rawTxId: string;
   tokenId: number | null;
-  redeemCode: string | null;
+  hasRedeemCode: boolean;
+  redeemCode?: string | null;
   codeStatus: string | null;
   accepted: boolean;
   fulfillmentStatus: string | null;
-  shippingAddress: ShippingAddress | null;
+  shippingAddress?: ShippingAddress | null;
   user: { email: string; username: string; walletAddress: string } | null;
   card: { cardId: string | null; claimId: string | null; status: string; rarity: number; templateId: string; fulfillmentStatus: string | null } | null;
-  redeemer: { username: string; walletAddress: string } | null;
+  redeemer?: { username: string; walletAddress: string } | null;
   txStatus: string;
   createdAt: string;
   updatedAt: string;
@@ -970,6 +973,21 @@ export default function AdminPage() {
  * the lock without pretending to show it, and it reads faster than a bare
  * message would.
  */
+/**
+ * A field the server did not send because nobody has unlocked the console.
+ *
+ * Said out loud rather than left blank. A missing address that reads as empty
+ * looks like a database problem; one that reads as locked looks like what it
+ * is, and points at the thing that fixes it.
+ */
+function Withheld({ label = "Locked" }: { label?: string }) {
+  return (
+    <span className="text-[0.65rem] italic" style={{ color: "rgba(255,255,255,0.28)" }} title="Sign in as an admin to see this">
+      {label}
+    </span>
+  );
+}
+
 function LockedPanel({ what, onUnlock }: { what: string; onUnlock: () => void }) {
   return (
     <div className="relative" data-testid="admin-locked-panel">
@@ -1373,11 +1391,12 @@ function CardsTable({ cards }: { cards: AdminCard[] }) {
             </td>
             <td className="px-4 py-3.5 text-xs">
               {c.ownerUsername && <div className="text-white/90 font-medium mb-0.5">{c.ownerUsername}</div>}
+              {!("ownerAddress" in c) && <Withheld label="Owner locked" />}
               {c.ownerAddress ? (
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-[0.6rem] text-white/40">{c.ownerAddress.slice(0, 10)}...{c.ownerAddress.slice(-6)}</span>
                   <button
-                    onClick={() => handleCopyAddress(c.ownerAddress)}
+                    onClick={() => c.ownerAddress && handleCopyAddress(c.ownerAddress)}
                     className="text-white/30 hover:text-white/70 transition-colors cursor-pointer"
                     title={copiedAddr === c.ownerAddress ? "Copied!" : "Copy wallet address"}
                   >
@@ -1493,7 +1512,7 @@ function PrintRequestsTable({ prints, onAccept }: { prints: PrintRequest[]; onAc
                 <p className="text-[0.62rem] uppercase tracking-widest text-white/40 mb-1">Redeem Code</p>
                 <p className="font-mono text-sm px-3 py-1.5 rounded-lg inline-block select-all"
                   style={{ background: "rgba(255,196,102,0.1)", border: "1px solid rgba(255,196,102,0.3)", color: "#ffc466" }}>
-                  {pr.redeemCode ?? "N/A"}
+                  {pr.redeemCode ?? (pr.hasRedeemCode ? <Withheld /> : "N/A")}
                 </p>
                 <p className="text-[0.6rem] text-white/40 mt-1">
                   Status: {pr.codeStatus === "claimed" ? "Claimed" : pr.codeStatus ?? "unknown"}
@@ -1680,6 +1699,7 @@ function HealthTable({
               </td>
               <td className="px-4 py-3 text-xs">
                 {card.ownerUsername && <div className="text-white/80">{card.ownerUsername}</div>}
+                {!("ownerAddress" in card) && <Withheld label="Owner locked" />}
               </td>
               <td className="px-4 py-3">
                 <StatusPill
@@ -1825,14 +1845,14 @@ function DismantleTable({ txs, cards, users }: { txs: AdminTx[]; cards: AdminCar
       ) : (
         txs.map((tx) => {
           const card = tx.tokenId != null ? cardMap.get(tx.tokenId) : undefined;
-          const user = userMap.get(tx.userId);
+          const user = tx.userId ? userMap.get(tx.userId) : undefined;
           const rarityLabel = tx.rarity != null ? RARITY_LABELS[tx.rarity] ?? "?" : card ? RARITY_LABELS[card.rarity] ?? "?" : "?";
           const cardName = card?.templateId ?? `Token #${tx.tokenId ?? "?"}`;
 
           return (
             <tr key={tx.id} style={rowStyle} className="hover:bg-white/[0.03] transition-colors">
               <td className="px-4 py-3.5 text-white/50 whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
-              <td className="px-4 py-3.5 text-white/90">{user?.username ?? tx.userId}</td>
+              <td className="px-4 py-3.5 text-white/90">{user?.username ?? tx.userId ?? <Withheld />}</td>
               <td className="px-4 py-3.5 text-white/90">{cardName}</td>
               <td className="px-4 py-3.5">
                 <span

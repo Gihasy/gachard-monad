@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { adminOnly, isUnlockedAdmin } from "@/lib/admin-tier";
 import { getCollection, parseObjectId } from "@/lib/mongodb";
 
 /**
@@ -6,7 +7,9 @@ import { getCollection, parseObjectId } from "@/lib/mongodb";
  * Returns cards with status "pending" (tokenId: null) along with pending duration.
  * Used to monitor stuck mint transactions.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // Which card is where is the flow. Whose it is, is not.
+  const unlocked = isUnlockedAdmin(request);
   try {
     const cardsCollection = await getCollection("cards");
     const txCollection = await getCollection("transactions");
@@ -58,8 +61,10 @@ export async function GET() {
         templateId: card.templateId,
         rarity: RARITY_LABELS[card.rarity] || `?${card.rarity}`,
         rarityCode: card.rarity,
-        ownerAddress: card.ownerAddress,
-        ownerUsername: card.ownerAddress ? addressToUsername.get(card.ownerAddress.toLowerCase()) || null : null,
+        ...adminOnly(unlocked, {
+          ownerAddress: card.ownerAddress,
+          ownerUsername: card.ownerAddress ? addressToUsername.get(card.ownerAddress.toLowerCase()) || null : null,
+        }),
         txId: card.txId || null,
         txHash: tx?.txHash || null,
         txStatus: tx?.status || "unknown",
