@@ -358,6 +358,23 @@ export default function Profil() {
               Redeem a card
             </button>
           </div>
+
+          {/*
+            Advanced wallet, last in this column.
+
+            It was full width below the card grid, which put the one thing a
+            user has to go looking for underneath a paginated list — closer to
+            hidden than to set apart. This column is already where account-level
+            actions live (Top up, Dismantle, Redeem) and the wallet is one of
+            them, so the column now reads: who you are and what you have, what
+            your collection looks like, what you can do.
+
+            Last rather than higher up on purpose. Collection Stats is for
+            everyone and this is for a minority, and prominence reads as
+            recommendation for something whose own warning says the link is
+            permanent.
+          */}
+          <PrivySection />
         </div>
 
         {/* Right column: Card Collection */}
@@ -608,8 +625,6 @@ export default function Profil() {
         />
       )}
 
-      {/* Advanced Users — Privy self-custody wallet (supplementary, at bottom) */}
-      <PrivySection />
     </PageShell>
   );
 }

@@ -9,12 +9,17 @@
  * the decision is actually being made, and the same dialog is the only way
  * through to Privy.
  *
- * It stays its own section at the bottom rather than moving into the balance
- * card above. That card is about balances: two rows, each a label and a
- * number. A wallet has no number of that kind, and putting it beside Top up
+ * It is its own section at the foot of the profile sidebar, not a row in the
+ * balance card above it. That card is about balances: two rows, each a label
+ * and a number. A wallet has no number of that kind, and sitting beside Top up
  * would make a permanent, unchangeable link look as routine as adding credit.
  * ADR-028 also scoped advanced features away from the everyday surface on
  * purpose.
+ *
+ * It was below the card grid until the sidebar became its home, which put the
+ * one thing a user has to go looking for underneath a paginated list. Last in
+ * the sidebar is findable without being promoted above Collection Stats, which
+ * everyone has and this is not.
  *
  * Whether a wallet exists is visible without opening anything. Hiding that
  * behind the dialog would lose information rather than just tidy it away.
@@ -31,6 +36,7 @@
  * only on /wallet/move.
  */
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -64,7 +70,17 @@ function PrivyMark() {
   );
 }
 
-/** Everything that is hard or impossible to undo, said before it is offered. */
+/**
+ * Everything that is hard or impossible to undo, said before it is offered.
+ *
+ * Rendered into document.body rather than in place. `.glass` sets
+ * backdrop-filter, which makes the section a containing block for fixed
+ * positioning, so `fixed inset-0` covered the section instead of the viewport
+ * and the dialog sat wherever the section sat — 332px left of centre once this
+ * moved into the profile sidebar. It looked correct while the section was full
+ * width, and correct on phones, because globals.css turns backdrop-filter off
+ * below 768px. A portal is immune to wherever the section is placed next.
+ */
 function WarningDialog({
   onClose,
   onContinue,
@@ -78,7 +94,9 @@ function WarningDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
@@ -145,7 +163,8 @@ function WarningDialog({
           Sign in with the same email you use for Gachard.
         </p>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -210,10 +229,10 @@ function PrivyWalletContent() {
   if (!ready) return null;
 
   return (
-    <section className="glass p-6 mt-8" data-testid="advanced-section">
-      <div className="flex items-baseline justify-between gap-3 mb-3">
+    <section className="glass p-4 sm:p-6" data-testid="advanced-section">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
         <p
-          className="text-[0.72rem] uppercase tracking-[0.22em]"
+          className="text-[0.65rem] sm:text-[0.72rem] uppercase tracking-[0.22em]"
           style={{ color: "var(--cosmic-violet)" }}
         >
           For advanced users
@@ -221,9 +240,12 @@ function PrivyWalletContent() {
         <PrivyMark />
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
+      {/* Stacked, not side by side. This sits in the profile sidebar, about
+          440px at desktop width, where a row would leave the text in a column
+          too narrow to read comfortably. */}
+      <div className="flex flex-col gap-4">
+        <div className="min-w-0">
+          <p className="text-[0.7rem] sm:text-xs leading-relaxed text-white/50">
             Hold your cards in a wallet only you control. Move them out of Gachard, bring them
             back, or take them somewhere else entirely.
           </p>
@@ -250,7 +272,7 @@ function PrivyWalletContent() {
         {!isConnected ? (
           <button
             onClick={() => setWarning(true)}
-            className="btn-primary !py-2.5 !px-6 !text-xs shrink-0"
+            className="btn-primary !py-2.5 !text-xs w-full"
             data-testid="privy-setup-btn"
           >
             Access
@@ -258,7 +280,7 @@ function PrivyWalletContent() {
         ) : (
           <Link
             href="/wallet"
-            className="btn-primary !py-2.5 !px-6 !text-xs shrink-0 text-center"
+            className="btn-primary !py-2.5 !text-xs w-full text-center"
             data-testid="open-wallet-page"
           >
             Open wallet
