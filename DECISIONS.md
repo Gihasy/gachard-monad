@@ -165,11 +165,26 @@ Cards follow the normal odds table. Guaranteed slots are Rare/Epic/Legendary wit
 **Reason**: Acquiring external IP Creators is Gachard's primary growth vector. Whitelist form enables a partner pipeline without technical commitment from creators. Web2-only because there's no blockchain need for registration, blockchain only becomes relevant after IP is onboarded and cards are minted.
 
 ## ADR-028: Privy Integration, Optional Self-Custody Wallet
-**Status**: Accepted
+**Status**: Accepted, **amended 22 September 2026** (see Amendment below; the pinning constraint no longer holds)
 **Decision**: Integrate Privy embedded wallet as optional "For Advanced Users" section in `/profile`. Uses `@privy-io/react-auth@1.93.0` (pinned, v2+/v3+ incompatible with Turbopack/Webpack in Next.js 16). Progressive disclosure UX: no technical terms visible until user explicitly expands "Show Technical Details". Wallet creation via Privy SDK, address verifiable on Monad block explorer. Export private key NOT available in v1.93.0 (`useExportWallet` hook added in v2+).
 **Scope**: ONLY affects `/profile` page. Core flow (pack purchase, fulfill, print, redeem, marketplace) remains 100% custodial, no changes to mint, blockchain.ts, or smart contracts.
 **Reason**: Gachard's central bet is that mainstream users should never see a wallet (ADR-002). But that bet only holds if the people who *do* want custody of their own keys are not locked out. Privy lets both audiences share one app: the default path stays fully custodial, and a user who wants a self-custody wallet can create one without a single blockchain term appearing until they ask for it. Scoped to `/profile` so the core flow carries zero added risk. It also makes the project eligible for the Privy bounty ($5,000) at the Monad Metropolis Hackathon, which is a welcome side effect rather than the reason for the design.
 **Known limitation**: Export private key not available. The wallet address can be viewed and verified on block explorer, but cannot be exported to other wallets. Decision to pin to v1.93.0 was made after confirming v2+/v3+ dependency tree (@headlessui/react v2 → react-aria v3 subpath exports; WalletConnect/AppKit) is incompatible with both Turbopack and Webpack in Next.js 16.
+**Amendment, 22 September 2026, the pin is lifted.**
+
+The constraint this ADR rests on was retested and no longer holds. `@privy-io/react-auth@3.44.0` installs, builds under Turbopack on Next.js 16 in about 10 seconds, typechecks, and runs: `/profile` loads, the SDK initialises, and `auth.privy.io/api/v1/apps/<appId>` answers 200. It still pulls the dependency tree named above, `@headlessui/react` v2 and WalletConnect, so that tree was never the real blocker, or it has since been fixed upstream. Exactly one line of our code had to change: `embeddedWallets.createOnLogin` moved under an `ethereum` key.
+
+**The upgrade was not optional in the end.** This app's Privy wallets run in `user-controlled-server-wallets-only` mode, and v1.93.0's `delegateWallet` targets the delegated-actions flow Privy has retired. Calling it does not fail, it hangs: nothing answers and the promise never settles. Delegation is required for the server to act on a user's wallet at all (ADR-031), so on v1.93.0 the export/import feature could never have worked. The pin was not a safe default, it was a dead end.
+
+**What the upgrade changed for us:**
+
+- `useSigners().addSigners()` replaces the retired API and works. Delegation is proven against a real wallet.
+- **`useExportWallet` is available**, so the "Known limitation" above is void. Users can take the private key and leave.
+- `useSessionSigners` exists but is deprecated in favour of `useSigners`.
+
+**Two runtime differences that cost time, recorded so they are not rediscovered:** `signTypedData` resolves to `{ signature }` in v3 where v1.93.0 resolved to the string, and typecheck cannot catch the difference when the value goes straight into `JSON.stringify`. And the SDK provides no way to attach the `privy-authorization-signature` header, which delegated wallets require: passing it in the rpc params leaves it in the body, passing it through request options never reaches the wire, and both return 401. Sponsored sends therefore call `POST /v1/wallets/{id}/rpc` with `fetch` directly; everything else still goes through the SDK.
+
+**Scope is also wider than this ADR states.** Privy is no longer confined to `/profile`. It now has its own page at `/wallet`, and `/collection` carries an export entry point. Both mount their own `PrivyProvider` as islands rather than a global one, so the isolation this ADR was built to protect still holds: the SDK never loads on pack opening, and verified after build, its chunk is absent from the prerendered HTML of both pages.
 
 ## ADR-029: Pyth Entropy for Provably Fair Pack Randomness
 **Status**: Accepted
@@ -219,7 +234,7 @@ Four properties make the result auditable:
 
 **The `sponsor` flag never appears in client code.** All sponsored transactions are sent server-side through `@privy-io/node` using `PRIVY_APP_SECRET`, and the Privy Dashboard option "Allow transactions from the client" stays **off**. `NEXT_PUBLIC_PRIVY_APP_ID` is inlined into the browser bundle by definition, so with that option on, the only thing guarding the sponsorship balance would be a value printed in the page source. This holds independently of the SDK pinning problem and would still hold if that problem disappeared.
 
-**Client SDK stays at `@privy-io/react-auth@1.93.0`.** Verified against the installed package: `useSignMessage`, `useSignTypedData` and `useSendTransaction` are all present, so nothing about this feature requires the v2/v3 upgrade that ADR-028 found incompatible. Signing happens on the pinned client; sponsorship happens on the server. `useExportWallet` remains unavailable and remains out of scope.
+**Client SDK, superseded 22 September 2026.** This ADR originally kept `@privy-io/react-auth` at 1.93.0, on the grounds that its signing hooks were sufficient and the v2/v3 upgrade ADR-028 rejected was therefore unnecessary. The signing hooks were indeed sufficient; delegation was not. v1.93.0's `delegateWallet` targets a flow Privy has retired and simply hangs against this app's wallet mode, and without delegation the server cannot send from a user's wallet, which makes import impossible. The client is now on **v3.44.0**. See the amendment to ADR-028. Signing still happens on the client and sponsorship still happens on the server, so the division this ADR describes is unchanged; only the version is.
 
 **No smart contract changes.** `marketplaceTransfer()` is `onlyOwner` but does not constrain the recipient, which covers export. Import rides on stock ERC-1155 `safeTransferFrom`, since the `_update()` override blocks only `Vaulted` cards. The H-2 fix already maintains `lastOwner` on standard transfers, so a user-initiated transfer does not corrupt the state `redeem()` depends on. `GachardCard` and `PackEntropy` are untouched, so no redeploy, no re-verification, and the 78/78 suite still stands.
 
