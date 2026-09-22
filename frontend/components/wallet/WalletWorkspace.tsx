@@ -129,6 +129,13 @@ function Workspace() {
    * only way to find out was to reload the whole page, which also logs the
    * Privy session back in and costs a few seconds.
    *
+   * It asks the server to check against the chain first, rather than only
+   * re-reading /api/cards. A card moved into this wallet from outside Gachard
+   * leaves no trace in the database at all — no transaction id, no pending row
+   * — so re-reading only ever returns the same stale answer. Reloading the
+   * page would not have helped either. The check is best-effort: if it fails
+   * or is rate limited, the list is still refreshed.
+   *
    * `loading` is deliberately not reused: it swaps the grid for the word
    * "Loading…", so a refresh would make the cards disappear and come back.
    * The list stays on screen and only the button says anything.
@@ -139,6 +146,11 @@ function Workspace() {
     setErr(null);
     setNote(null);
     try {
+      try {
+        await fetch("/api/privy/reconcile", { method: "POST", credentials: "include" });
+      } catch {
+        /* the reload below is still worth doing */
+      }
       await load();
     } finally {
       setRefreshing(false);

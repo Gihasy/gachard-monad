@@ -292,6 +292,43 @@ export async function reconcileExportedCard(card: CardDoc): Promise<ReconcileRes
     return noop(`release still ${rel.status}`);
   }
 
+  // The card was sent outside Gachard and has come back.
+  //
+  // Nothing in this app did that. Someone moved the token from the outside
+  // address to the user's wallet directly on chain, and there is no webhook,
+  // no Privy transaction id and no history row to find it by — the chain is
+  // the only record that it happened. Without this branch the card fell all
+  // the way through to "consistent" below, which is the one answer that was
+  // certainly wrong: the database said Released while the wallet held the
+  // token, so it appeared nowhere on /wallet and could not be returned.
+  //
+  // Exported is precisely what "in the user's own wallet" means, so the card
+  // rejoins the normal cycle and Return works on it again. The release fields
+  // are cleared because they now describe a journey that was undone; leaving
+  // them would make the next sweep try to settle a transfer that no longer
+  // describes where the card is.
+  //
+  // Placed after the settle branch above deliberately. A card that comes back
+  // before its outbound transfer was ever settled is repaired in two passes —
+  // the hash is recorded first, the status second — which costs one extra
+  // sweep and keeps the outbound hash rather than discarding it.
+  if (privyHolds && card.status === "Released") {
+    await cards.updateOne(
+      { _id: card._id },
+      {
+        $set: { status: "Exported", updatedAt: new Date().toISOString() },
+        $unset: {
+          releasedTo: "",
+          releasedAt: "",
+          releaseTxId: "",
+          releaseTxHash: "",
+          releaseStatus: "",
+        },
+      }
+    );
+    return { cardId: label, changed: true, from, to: "Exported", reason: "a released card is back in the user's wallet" };
+  }
+
   // Neither wallet holds it. Most likely burned; say so rather than guessing.
   if (!custodialHolds && !privyHolds) {
     return noop("token held by neither wallet, left alone");

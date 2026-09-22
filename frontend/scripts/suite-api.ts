@@ -251,19 +251,34 @@ function group(title: string) { results.push(`\n${title}`); }
   group("J. Removed surfaces");
   check("the advanced-access endpoint is gone", (await get("/api/user/advanced", session)).status === 404);
 
+  // ================= K0. the on-demand reconcile =================
+  // The branch it exists for — a card moved into the wallet from outside
+  // Gachard — cannot be built here: it needs an address that really holds a
+  // token on Monad, and this fixture's wallets are freshly generated. That
+  // branch was verified against real chain state. What is checked here is the
+  // route around it: that it is gated, and that it answers in the shape the
+  // Refresh button reads.
+  group("K. On-demand reconcile");
+  check("reconcile without a session is refused", (await post("/api/privy/reconcile", {})).status === 401);
+  const recRes = await post("/api/privy/reconcile", {}, session);
+  const recBody = await recRes.json().catch(() => null);
+  check("reconcile with a session is accepted", recRes.status === 200, String(recRes.status));
+  check("it reports how many cards changed", typeof recBody?.changed === "number");
+  check("it lists what it looked at", Array.isArray(recBody?.results));
+
   // ================= K2. a released card =================
-  group("K. Released cards");
+  group("L. Released cards");
   const cardsBody = await (await get("/api/cards", session)).json();
   const released = (cardsBody.cards ?? []).find((c: Record<string, unknown>) => c.cardId === "suite-5");
   check("a released card is still listed", !!released);
   check("it does not claim to be Digital", released?.displayStatus !== "Digital", String(released?.displayStatus));
   check("it reads as Sent Away", released?.displayStatus === "Sent Away", String(released?.displayStatus));
 
-  // ================= L. scanned QR payloads =================
+  // ================= M. scanned QR payloads =================
   // Both QR codes hold a URL, not an id. Claim Shipping compared the whole URL
   // against a bare claimId and refused every card; these are the shapes a
   // scanner actually produces.
-  group("L. Scanned QR payloads");
+  group("M. Scanned QR payloads");
   const ORIGIN = "https://gachard-monad.vercel.app";
   const sc = (t: string) => parseScannedCode(t);
   check("a claim QR yields its claimId", sc(`${ORIGIN}/scan?claimId=1fa28e07`).claimId === "1fa28e07");
