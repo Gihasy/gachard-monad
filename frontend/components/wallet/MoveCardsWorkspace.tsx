@@ -70,7 +70,6 @@ function Workspace() {
   const [movable, setMovable] = useState<WalletCard[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [advanced, setAdvanced] = useState<boolean | null>(null);
   const [userId, setUserId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -126,12 +125,6 @@ function Workspace() {
     }
   }, []);
 
-  useEffect(() => {
-    fetch("/api/user/advanced", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setAdvanced(d?.enabled === true))
-      .catch(() => setAdvanced(false));
-  }, []);
 
   // This page has its own Privy login, so it binds too. Otherwise a user who
   // arrives here directly is connected in the browser but unknown to the
@@ -289,7 +282,7 @@ function Workspace() {
     await load();
   }, [movable, selected, address, userId, signTypedData, poll, load]);
 
-  if (!ready || advanced === null) {
+  if (!ready) {
     return (
       <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
         Loading…
@@ -297,19 +290,6 @@ function Workspace() {
     );
   }
 
-  if (!advanced) {
-    return (
-      <Blocked
-        title="Not turned on"
-        href="/profile"
-        action="Go to profile"
-        testId="move-blocked-advanced"
-      >
-        Advanced access is off, so cards cannot leave Gachard. Turn it on in your profile and
-        they will be listed here to choose from.
-      </Blocked>
-    );
-  }
 
   if (!authenticated || !address) {
     return (

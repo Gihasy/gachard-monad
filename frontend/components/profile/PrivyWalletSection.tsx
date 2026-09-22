@@ -3,19 +3,22 @@
 /**
  * "For Advanced Users" on /profile (ADR-028, extended for ADR-031).
  *
- * Two decisions live here and they are deliberately separate. Linking a Privy
- * wallet is one; allowing cards to leave Gachard is another. Someone can hold
- * a wallet and still not want that available, so the switch is its own control
- * rather than something the link implies.
+ * Connecting the wallet is the decision. There used to be a second one: an
+ * Advanced Access switch that separately allowed cards to leave, on the
+ * reasoning that someone might hold a wallet and still not want that. In
+ * practice it asked the same question twice — a wallet exists here for exactly
+ * one purpose — and it could only ever be off by accident, leaving /wallet/move
+ * blocked with no sign of why from this page.
  *
- * The switch has no effect on this page or on /collection. Choosing which
- * cards move happens only on /wallet, which keeps every consumer surface free
- * of wallet actions (ADR-002).
+ * Nothing about the consumer surfaces changes. /collection and the rest carry
+ * no wallet actions for anyone, which is enforced by their not existing there
+ * rather than by a setting (ADR-002). Choosing which cards move still happens
+ * only on /wallet/move.
  *
- * The warning is not decoration. Everything below it is hard or impossible to
- * undo: a card sent to an outside address cannot be recovered, the wallet link
- * is permanent, and a revealed private key cannot be un-revealed. The section
- * says so before it offers any of it.
+ * The warning is not decoration. Everything it describes is hard or impossible
+ * to undo: a card sent to an outside address cannot be recovered, and the
+ * wallet link is permanent. It is stated whether or not a wallet is connected
+ * yet, because it stays true either way.
  */
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -59,9 +62,6 @@ function PrivyWalletContent() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [advanced, setAdvanced] = useState(false);
-  const [linked, setLinked] = useState(false);
-  const [toggling, setToggling] = useState(false);
 
   // Must be the embedded Privy wallet specifically. useWallets() also returns
   // external wallets (an injected MetaMask, say), and wallets[0] can be one of
@@ -71,22 +71,6 @@ function PrivyWalletContent() {
   const wallet = wallets.find((w) => w.walletClientType === "privy");
   const isConnected = authenticated && !!wallet;
 
-  const loadSetting = useCallback(async () => {
-    try {
-      const res = await fetch("/api/user/advanced", { credentials: "include" });
-      const body = await res.json().catch(() => null);
-      if (body) {
-        setAdvanced(body.enabled === true);
-        setLinked(body.linked === true);
-      }
-    } catch {
-      /* leave it off rather than guessing */
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSetting();
-  }, [loadSetting]);
 
   // Bind on connect. Send a token rather than a claim: the DID and the wallet
   // address used to be posted from here and written as given, which let anyone
@@ -111,7 +95,6 @@ function PrivyWalletContent() {
           return;
         }
         setSaved(true);
-        setLinked(true);
       } catch {
         setError("Could not connect that wallet.");
       } finally {
@@ -119,30 +102,6 @@ function PrivyWalletContent() {
       }
     })();
   }, [ready, isConnected, saved, saving, wallet, user]);
-
-  const toggle = useCallback(async () => {
-    const next = !advanced;
-    setToggling(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/user/advanced", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ enabled: next }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        setError(body?.error ?? "Could not save that setting.");
-        return;
-      }
-      setAdvanced(next);
-    } catch {
-      setError("Could not save that setting.");
-    } finally {
-      setToggling(false);
-    }
-  }, [advanced]);
 
   if (!ready) return null;
 
@@ -176,7 +135,7 @@ function PrivyWalletContent() {
           className="text-[0.68rem] uppercase tracking-[0.14em] mb-2"
           style={{ color: "var(--aurora-gold)" }}
         >
-          Before you turn this on
+          What this means
         </p>
         <ul className="space-y-1.5 text-[0.78rem] leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
           <li>
@@ -220,54 +179,6 @@ function PrivyWalletContent() {
         </>
       ) : (
         <div className="space-y-4">
-          {/* The switch, separate from the link. */}
-          <div className="card-surface px-4 py-3 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm">Advanced access</p>
-              <p className="text-[0.7rem]" style={{ color: "var(--text-tertiary)" }}>
-                {advanced
-                  ? "Choose cards to move on your wallet page."
-                  : "Your cards stay as they are. Nothing can be moved out."}
-              </p>
-            </div>
-            <button
-              onClick={toggle}
-              disabled={toggling || !linked}
-              role="switch"
-              aria-checked={advanced}
-              aria-label="Advanced access"
-              className="relative shrink-0 rounded-full transition-all disabled:opacity-40"
-              style={{
-                width: 46,
-                height: 26,
-                background: advanced ? "rgba(0,204,255,0.25)" : "rgba(255,255,255,0.08)",
-                border: `1px solid ${advanced ? "rgba(0,204,255,0.5)" : "var(--border-strong)"}`,
-              }}
-              data-testid="advanced-toggle"
-            >
-              <span
-                className="absolute rounded-full transition-all"
-                style={{
-                  width: 18,
-                  height: 18,
-                  top: 3,
-                  left: advanced ? 23 : 3,
-                  background: advanced ? "var(--electric-blue)" : "var(--text-tertiary)",
-                  boxShadow: advanced ? "0 0 10px var(--electric-blue)" : "none",
-                }}
-              />
-            </button>
-          </div>
-
-          <div className="card-surface px-4 py-3">
-            <p className="text-[0.65rem] uppercase tracking-[0.14em] mb-1" style={{ color: "var(--text-tertiary)" }}>
-              Wallet address
-            </p>
-            <p className="text-[0.78rem] font-mono break-all" style={{ color: "var(--text-secondary)" }}>
-              {wallet.address}
-            </p>
-          </div>
-
           <div className="flex flex-wrap gap-2">
             <Link
               href="/wallet"
@@ -276,15 +187,6 @@ function PrivyWalletContent() {
             >
               Open wallet →
             </Link>
-            <a
-              href={`https://testnet.monadvision.com/address/${wallet.address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-ghost !py-2 !px-4 !text-[0.7rem]"
-              data-testid="privy-explorer-link"
-            >
-              Explorer ↗
-            </a>
           </div>
         </div>
       )}
