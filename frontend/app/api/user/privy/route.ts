@@ -9,22 +9,27 @@
  * themselves. The export route's signature check would pass, because it
  * compares against the stored address, and the stored address was theirs.
  *
- * Two changes close that.
+ * Three rules close that, and each one is doing separate work.
  *
- * The identity is no longer claimed, it is proven. The client sends a Privy
- * access token, the server verifies it against the app's public key, and the
- * DID comes out of the verified payload. The wallet address is then read from
- * Privy for that DID. Neither value is taken from the body any more.
+ * The identity is proven, not claimed. The client sends a Privy access token,
+ * the server verifies it against the app's public key, and the DID comes out
+ * of the verified payload. The wallet address is then read from Privy for
+ * that DID. Neither is taken from the body any more.
  *
- * And a binding cannot be swapped while cards are out. Rebinding is allowed
- * when the wallet is empty, so someone who loses access to their Privy
- * account is not locked out for good, but never while there is something in
- * the wallet to walk away with.
+ * The Privy account must carry the same email as the Gachard account. A
+ * verified token only proves the caller controls *some* Privy account, and
+ * making a fresh one costs nothing, so without this a stolen session still
+ * leads to a wallet the thief owns. Requiring the email makes the two
+ * identities the same person rather than merely two accounts held at once.
+ *
+ * And a binding is permanent. Not "changeable when the wallet is empty":
+ * whoever holds the session could empty it first and then rebind. One Gachard
+ * account, one Privy account, for good.
  */
 import { NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
-import { getEmbeddedWalletForUser, verifyPrivyToken } from "@/lib/privy-server";
+import { getPrivyIdentity, verifyPrivyToken } from "@/lib/privy-server";
 
 export const maxDuration = 10;
 
@@ -45,41 +50,71 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Could not verify that wallet." }, { status: 401 });
     }
 
-    const wallet = await getEmbeddedWalletForUser(privyUserId);
-    if (!wallet?.address) {
+    const existing: string | undefined = user.privyUserId;
+
+    // Already bound to this same account: refresh the stored details and stop.
+    // Nothing below needs re-checking, and this is the common path on every
+    // page load.
+    if (existing && existing === privyUserId) {
+      const identity = await getPrivyIdentity(privyUserId);
+      if (identity?.wallet) {
+        const usersCollection = await getCollection("users");
+        await usersCollection.updateOne(
+          { _id: user._id },
+          {
+            $set: {
+              privyWalletAddress: identity.wallet.address,
+              privyWalletId: identity.wallet.id,
+            },
+          }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        walletAddress: identity?.wallet?.address ?? user.privyWalletAddress ?? null,
+      });
+    }
+
+    // Bound to a different account: refused outright, no conditions.
+    if (existing) {
+      console.warn(
+        `[user/privy] refused rebind for ${user._id.toString()}: bound to ${existing}, asked for ${privyUserId}`
+      );
+      return NextResponse.json(
+        {
+          error:
+            "This account is already linked to a wallet, and that link cannot be changed.",
+          code: "already_bound",
+        },
+        { status: 409 }
+      );
+    }
+
+    const identity = await getPrivyIdentity(privyUserId);
+    if (!identity?.wallet?.address) {
       return NextResponse.json(
         { error: "No Gachard wallet found on that account yet." },
         { status: 400 }
       );
     }
 
-    const existing: string | undefined = user.privyUserId;
-    const isRebind = Boolean(existing) && existing !== privyUserId;
-
-    if (isRebind) {
-      // Only the count matters, and only for this user's cards.
-      const cardsCollection = await getCollection("cards");
-      const held = await cardsCollection.countDocuments({
-        ownerAddress: user.walletAddress,
-        status: "Exported",
-      });
-      if (held > 0) {
-        console.warn(
-          `[user/privy] refused rebind for ${user._id.toString()}: ${held} card(s) still in the old wallet`
-        );
-        return NextResponse.json(
-          {
-            error:
-              held === 1
-                ? "Return the card in your wallet before connecting a different one."
-                : `Return the ${held} cards in your wallet before connecting a different one.`,
-            code: "cards_outstanding",
-          },
-          { status: 409 }
-        );
-      }
+    const gachardEmail = String(user.email ?? "").toLowerCase().trim();
+    if (!gachardEmail) {
+      return NextResponse.json(
+        { error: "This account has no email, so a wallet cannot be linked to it." },
+        { status: 400 }
+      );
+    }
+    if (!identity.emails.includes(gachardEmail)) {
       console.warn(
-        `[user/privy] rebinding ${user._id.toString()} from ${existing} to ${privyUserId}`
+        `[user/privy] email mismatch for ${user._id.toString()}: wanted ${gachardEmail}, Privy account has ${identity.emails.length} address(es)`
+      );
+      return NextResponse.json(
+        {
+          error: `Sign in to your wallet with ${gachardEmail}, the same address you use for Gachard.`,
+          code: "email_mismatch",
+        },
+        { status: 403 }
       );
     }
 
@@ -89,18 +124,14 @@ export async function POST(request: Request) {
       {
         $set: {
           privyUserId,
-          privyWalletAddress: wallet.address,
-          privyWalletId: wallet.id,
+          privyWalletAddress: identity.wallet.address,
+          privyWalletId: identity.wallet.id,
           privyConnectedAt: new Date().toISOString(),
         },
       }
     );
 
-    return NextResponse.json({
-      success: true,
-      walletAddress: wallet.address,
-      rebound: isRebind,
-    });
+    return NextResponse.json({ success: true, walletAddress: identity.wallet.address });
   } catch (error) {
     console.error("[user/privy] failed:", error);
     return NextResponse.json({ error: "Could not connect that wallet." }, { status: 500 });

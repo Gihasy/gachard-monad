@@ -198,30 +198,47 @@ async function getVerificationKey(): Promise<string | null> {
   }
 }
 
+export interface PrivyIdentity {
+  wallet: { address: string; id: string | null; delegated: boolean } | null;
+  /** Every verified email on the account, lowercased. */
+  emails: string[];
+}
+
 /**
- * The embedded wallet Privy holds for a user, looked up by DID.
+ * The wallet and the verified emails Privy holds for a DID.
  *
- * Used when binding, so the stored address comes from Privy rather than from
- * whatever the browser claimed.
+ * Both come back from one lookup because the binding needs both: the address
+ * to store, and the emails to check the account really belongs to the person
+ * already signed in to Gachard.
+ *
+ * Emails arrive under two shapes. A direct email login is an "email" account
+ * with the value on `address`; a Google login is a "google_oauth" account
+ * with it on `email`. Reading only one of them would reject half the users
+ * for no reason, since both login methods are enabled for this app.
  */
-export async function getEmbeddedWalletForUser(
-  privyUserId: string
-): Promise<{ address: string; id: string | null; delegated: boolean } | null> {
+export async function getPrivyIdentity(privyUserId: string): Promise<PrivyIdentity | null> {
   try {
     const user = await getPrivyClient().users()._get(privyUserId);
+    const identity: PrivyIdentity = { wallet: null, emails: [] };
+
     for (const acct of user?.linked_accounts ?? []) {
       const a = acct as {
         address?: string;
+        email?: string;
         id?: string | null;
         delegated?: boolean;
         connector_type?: string;
         type?: string;
       };
-      if (a.type === "wallet" && a.connector_type === "embedded" && a.address) {
-        return { address: a.address, id: a.id ?? null, delegated: a.delegated === true };
+
+      if (a.type === "wallet" && a.connector_type === "embedded" && a.address && !identity.wallet) {
+        identity.wallet = { address: a.address, id: a.id ?? null, delegated: a.delegated === true };
       }
+      if (a.type === "email" && a.address) identity.emails.push(a.address.toLowerCase());
+      if (a.type === "google_oauth" && a.email) identity.emails.push(a.email.toLowerCase());
     }
-    return null;
+
+    return identity;
   } catch (e) {
     console.warn("[privy] user lookup failed:", e instanceof Error ? e.message : e);
     return null;
