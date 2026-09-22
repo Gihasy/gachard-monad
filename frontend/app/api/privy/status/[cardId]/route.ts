@@ -134,6 +134,14 @@ export async function GET(
         }
       );
 
+      // Settle the history row as well, or it stays "Processing" forever
+      // while the card itself reads as returned.
+      const txCollection = await getCollection("transactions");
+      await txCollection.updateOne(
+        { privyTxId: card.importTxId },
+        { $set: { status: "confirmed", txHash: imp.hash, updatedAt: new Date().toISOString() } }
+      );
+
       return NextResponse.json({
         ...base,
         status: "Digital",

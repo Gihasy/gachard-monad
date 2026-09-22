@@ -29,6 +29,7 @@ const TX_TYPE_MAP: Record<string, string> = {
   claimed: "Physical",
   privy_export: "Sent to Your Wallet",
   privy_import: "Returned to Gachard",
+  privy_send: "Sent Outside Gachard",
 };
 
 /**

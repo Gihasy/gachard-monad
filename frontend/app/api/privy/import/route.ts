@@ -141,6 +141,27 @@ export async function POST(request: Request) {
       data,
     });
 
+    // Recorded so the return appears in the user's history. Without this the
+    // history shows a card leaving and never coming back, which reads like
+    // something went wrong.
+    const txCollection = await getCollection("transactions");
+    await txCollection.insertOne({
+      userId,
+      type: "privy_import",
+      tokenId: Number(card.tokenId),
+      tokenIds: [Number(card.tokenId)],
+      rarity: card.rarity ?? 0,
+      templateIds: [card.templateId],
+      privyTxId: sent.transactionId,
+      txHash: null,
+      status: "pending",
+      contractAddress: process.env.CONTRACT_ADDRESS!,
+      fromAddress: privyAddress,
+      toAddress: user.walletAddress,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
     await cardsCollection.updateOne(
       { _id: card._id },
       {

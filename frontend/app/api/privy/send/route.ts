@@ -140,6 +140,24 @@ export async function POST(request: Request) {
       data,
     });
 
+    const txCollection = await getCollection("transactions");
+    await txCollection.insertOne({
+      userId,
+      type: "privy_send",
+      tokenId: Number(card.tokenId),
+      tokenIds: [Number(card.tokenId)],
+      rarity: card.rarity ?? 0,
+      templateIds: [card.templateId],
+      privyTxId: sent.transactionId,
+      txHash: null,
+      status: "pending",
+      contractAddress: process.env.CONTRACT_ADDRESS!,
+      fromAddress: privyAddress,
+      toAddress: destination,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
     await cardsCollection.updateOne(
       { _id: card._id },
       {

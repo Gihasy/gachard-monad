@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import PageShell from "@/components/PageShell";
+import { friendlyTxType } from "@/lib/status-map";
 import CardItem from "@/components/CardItem";
 
 const PrivySection = dynamic(() => import("@/components/profile/PrivyWalletSection"), { ssr: false });
@@ -26,6 +27,13 @@ type Card = {
   listingId?: string | null;
   listingPrice?: number | null;
 };
+
+// Eight rows visible, the rest behind a scroll. Row and header heights are
+// measured from the padding and type size used below; they are here rather
+// than inline so the cap and the hint cannot drift apart.
+const VISIBLE_TX = 8;
+const TX_ROW_PX = 45;
+const TX_HEAD_PX = 41;
 
 export default function Profil() {
   const router = useRouter();
@@ -546,17 +554,34 @@ export default function Profil() {
       {/* Transaction History */}
       {transactions.length > 0 && (
         <div className="mt-8" data-testid="profile-transactions">
-          <p
-            className="text-[0.72rem] uppercase tracking-[0.22em] mb-4"
-            style={{ color: "var(--cosmic-violet)" }}
-          >
-            Transaction History
-          </p>
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <p
+              className="text-[0.72rem] uppercase tracking-[0.22em]"
+              style={{ color: "var(--cosmic-violet)" }}
+            >
+              Transaction History
+            </p>
+            {transactions.length > VISIBLE_TX && (
+              <p className="text-[0.65rem] text-white/35" data-testid="tx-count-hint">
+                {VISIBLE_TX} of {transactions.length} shown, scroll for more
+              </p>
+            )}
+          </div>
           <div className="glass overflow-hidden">
-            <div className="overflow-x-auto">
+            {/*
+              Height is capped at VISIBLE_TX rows and the rest scrolls, so a
+              long history does not push everything below it off the page.
+              The header sticks, otherwise the columns lose their labels as
+              soon as you scroll.
+            */}
+            <div
+              className="overflow-x-auto overflow-y-auto"
+              style={{ maxHeight: `calc(${TX_ROW_PX}px * ${VISIBLE_TX} + ${TX_HEAD_PX}px)` }}
+              data-testid="tx-scroll"
+            >
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-white/[0.06]">
+                  <tr className="border-b border-white/[0.06] sticky top-0 z-10" style={{ background: "rgba(13,13,26,0.96)", backdropFilter: "blur(8px)" }}>
                     <th className="text-left px-4 py-3 text-[0.65rem] uppercase tracking-widest text-white/40 font-medium">Invoice</th>
                     <th className="text-left px-4 py-3 text-[0.65rem] uppercase tracking-widest text-white/40 font-medium">Type</th>
                     <th className="text-left px-4 py-3 text-[0.65rem] uppercase tracking-widest text-white/40 font-medium">Details</th>
@@ -590,7 +615,14 @@ export default function Profil() {
                                 : "var(--cosmic-violet)",
                           }}
                         >
-                          {tx.type === "topup" ? "Top Up" : tx.type === "mint" ? "Pack" : tx.type === "print" ? "Print" : tx.type === "redeem" ? "Redeem" : tx.type}
+                          {/*
+                            Label from the shared map rather than a chain of
+                            ternaries. The old chain covered four types and
+                            printed the raw key for everything else, so
+                            dismantled, sold and the wallet actions all leaked
+                            through as identifiers.
+                          */}
+                          {friendlyTxType(tx.type)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-white/60 text-xs">
