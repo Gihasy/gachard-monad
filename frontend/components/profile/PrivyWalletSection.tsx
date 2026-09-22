@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
+import { getAccessToken, PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import { monadTestnet } from "@/lib/monad-testnet";
 
 function PrivyWalletContent() {
@@ -26,22 +26,32 @@ function PrivyWalletContent() {
   useEffect(() => {
     if (!ready || !isConnected || saved || saving) return;
     setSaving(true);
-    fetch("/api/user/privy", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        // The real Privy DID, not a placeholder. It is the only way the
-        // server can look up a USER-OWNED embedded wallet: wallets().list()
-        // returns app-owned wallets only, so without this the server cannot
-        // find the wallet it needs to transact from (ADR-031).
-        privyUserId: user?.id ?? null,
-        privyWalletAddress: wallet?.address,
-      }),
-    })
-      .then(() => setSaved(true))
-      .catch(() => {})
-      .finally(() => setSaving(false));
+    // Send a token rather than a claim. The DID and the wallet address used
+    // to be posted from here and written as given, which let anyone with a
+    // Gachard session point the binding at a wallet of their own. The server
+    // now derives both from this token (ADR-031).
+    (async () => {
+      try {
+        const authToken = await getAccessToken();
+        if (!authToken) throw new Error("no access token");
+        const res = await fetch("/api/user/privy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ authToken }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          setError(body?.error ?? "Could not connect that wallet.");
+          return;
+        }
+        setSaved(true);
+      } catch {
+        setError("Could not connect that wallet.");
+      } finally {
+        setSaving(false);
+      }
+    })();
   }, [ready, isConnected, saved, saving, wallet, user]);
 
   if (!ready) return null;

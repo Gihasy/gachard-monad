@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
+  getAccessToken,
   PrivyProvider,
   useExportWallet,
   usePrivy,
@@ -111,6 +112,39 @@ function Workspace() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // This page has its own Privy login, so it has to bind too. Otherwise a
+  // user who never opens /profile is connected here but unknown to the
+  // server, and every action fails with "no self-custody wallet on file".
+  //
+  // The server derives the identity from this token; nothing about the
+  // wallet is asserted from the browser (ADR-031).
+  const [bound, setBound] = useState(false);
+  useEffect(() => {
+    if (!ready || !authenticated || !address || bound) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const authToken = await getAccessToken();
+        if (!authToken || cancelled) return;
+        const res = await fetch("/api/user/privy", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ authToken }),
+        });
+        const body = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok) setErr(body?.error ?? "Could not connect this wallet.");
+        else setBound(true);
+      } catch {
+        if (!cancelled) setErr("Could not connect this wallet.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, authenticated, address, bound]);
 
   const act = useCallback(
     async (key: string, run: () => Promise<Response>, okNote: string) => {

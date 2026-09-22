@@ -23,7 +23,11 @@
  *    landed, so a blind retry executes twice. Check on-chain state (or
  *    getSponsoredStatus) before deciding to resend.
  */
-import { generateAuthorizationSignature, PrivyClient } from "@privy-io/node";
+import {
+  generateAuthorizationSignature,
+  PrivyClient,
+  verifyAuthToken,
+} from "@privy-io/node";
 import { ethers } from "ethers";
 import { checkDailyLimit } from "./rate-limit";
 
@@ -144,6 +148,84 @@ export async function resolveWalletId(
 /** True when the wallet exists but the app has no signing rights on it yet. */
 export function needsDelegation(w: ResolvedWallet | null): boolean {
   return Boolean(w && !w.appOwned && (!w.delegated || !w.id));
+}
+
+/**
+ * Verify a Privy access token and return the DID it was issued for.
+ *
+ * The point is that the caller cannot choose the answer. Binding a Privy
+ * account to a Gachard account used to trust whatever the browser posted,
+ * so anyone holding a Gachard session could name their own wallet as the
+ * destination and walk the cards out. The identity now comes from a token
+ * Privy signed, not from the request body.
+ *
+ * Returns null on any failure rather than throwing, so callers answer with
+ * one generic rejection instead of describing which check failed.
+ */
+export async function verifyPrivyToken(authToken: string): Promise<string | null> {
+  if (!authToken || !APP_ID) return null;
+  try {
+    const key = await getVerificationKey();
+    if (!key) return null;
+    const payload = await verifyAuthToken({
+      auth_token: authToken,
+      app_id: APP_ID,
+      verification_key: key,
+    });
+    return payload?.user_id ?? null;
+  } catch (e) {
+    console.warn("[privy] token verification failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/**
+ * The app's public verification key, fetched once and kept.
+ *
+ * It is public and changes only if the app is reconfigured, so re-fetching
+ * it on every sign-in would be a round trip for nothing.
+ */
+let verificationKey: string | null = null;
+async function getVerificationKey(): Promise<string | null> {
+  if (verificationKey) return verificationKey;
+  try {
+    const settings = await getPrivyClient().apps().getSettings();
+    verificationKey = (settings as { verification_key?: string })?.verification_key ?? null;
+    return verificationKey;
+  } catch (e) {
+    console.warn("[privy] could not read the verification key:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/**
+ * The embedded wallet Privy holds for a user, looked up by DID.
+ *
+ * Used when binding, so the stored address comes from Privy rather than from
+ * whatever the browser claimed.
+ */
+export async function getEmbeddedWalletForUser(
+  privyUserId: string
+): Promise<{ address: string; id: string | null; delegated: boolean } | null> {
+  try {
+    const user = await getPrivyClient().users()._get(privyUserId);
+    for (const acct of user?.linked_accounts ?? []) {
+      const a = acct as {
+        address?: string;
+        id?: string | null;
+        delegated?: boolean;
+        connector_type?: string;
+        type?: string;
+      };
+      if (a.type === "wallet" && a.connector_type === "embedded" && a.address) {
+        return { address: a.address, id: a.id ?? null, delegated: a.delegated === true };
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn("[privy] user lookup failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 export interface SponsoredSend {
