@@ -2,65 +2,76 @@
 
 ## Status: SIAP DIPAKAI (tahap 7 dari `docs/PRIVY-BEYOND-AUTH-SPEC.md`)
 
-*Dibuat: 22 September 2026*
+*Dibuat: 22 September 2026. Diperbarui setelah pindah ke SDK v3 dan halaman `/wallet`.*
 *Deadline bounty: 14 Oktober 2026, 10:59 GMT+7*
-*Keputusan: ADR-031*
+*Keputusan: ADR-031. **ADR-028 perlu diamandemen**, alasan pinning-nya sudah tidak berlaku.*
 
 ---
 
-## 0. Yang Dinilai, dan Kenapa Runbook Ini Ada
+## 0. Yang Dinilai
 
 Kriteria penilaian pertama dari dua di halaman bounty adalah **"Demo must clearly show the functionality powered by Privy"**, dan deliverable-nya dirumuskan sebagai "a project with a demo". Rekaman ini bukan pelengkap submission, ia **barang yang dinilai**.
 
-Karena itu dua momen di Bagian 4 diperlakukan sebagai inti rekaman, bukan detail.
+Empat momen di Bagian 4 yang menopang seluruh argumen. Sisanya konteks.
 
 ---
 
-## 1. Satu Hal yang Belum Pernah Terbukti
+## 1. Apa yang Sudah Terbukti, dan Apa yang Belum
 
-**Alur tanda tangan export belum pernah berhasil dijalankan di browser sungguhan.**
+**Sudah terbukti di browser sungguhan dengan login Privy asli:**
 
-Semua lapisan lain sudah teruji: verifikasi tanda tangan, transfer, klaim sponsored, import, rekonsiliasi, dan seluruh guard. Semuanya lewat tes API dan transaksi nyata di Monad Testnet. Yang belum: modal tanda tangan Privy muncul di browser dan menghasilkan tanda tangan yang diterima server.
+- Login Privy dan pembuatan wallet di v3
+- Delegasi lewat `addSigners`
+- Modal tanda tangan Privy, dan tanda tangannya diterima server
+- Export: kartu berpindah ke wallet user (token 256)
+- Klaim sponsored dari wallet user, gas dibayar Privy
 
-Percobaan pertama gagal karena alamat tujuan ternyata wallet eksternal, bukan embedded wallet Privy. Itu sudah diperbaiki (commit `51a82cc`), tapi **perbaikannya belum diverifikasi ulang dengan login Privy sungguhan.**
+**Belum pernah dijalankan sungguhan:**
 
-**Jangan mulai merekam sebelum Bagian 2 lolos.** Satu percobaan berhasil sudah cukup.
+- **Send ke alamat lain** (`/wallet`)
+- **Reveal private key** (`/wallet`)
+- **Withdraw access**, yaitu pencabutan delegasi
+
+Ketiganya dipakai di rekaman. **Coba satu kali sebelum merekam.** Untuk Send, pakai alamat yang Anda kendalikan sendiri, karena kartunya benar-benar pergi dan tidak bisa ditarik kembali.
 
 ---
 
-## 2. Pra-terbang, Jalankan Sekali Sebelum Merekam
+## 2. Pra-terbang
 
 Urutan ini sengaja: yang paling mungkin gagal didahulukan.
 
 | # | Langkah | Lolos kalau |
 |---|---|---|
-| 1 | Buka `/profile`, masuk bagian "For Advanced Users" | Muncul alamat wallet |
+| 1 | Buka `/wallet` | Alamat wallet muncul, bukan tombol "Set up" |
 | 2 | Cocokkan alamat itu di Privy Dashboard → Wallets | Alamatnya ada di daftar |
-| 3 | Buka `/collection`, pilih satu kartu Digital | Tombol "Move to My Wallet" terlihat |
-| 4 | Klik, lalu **selesaikan modal tanda tangan Privy** | Status berubah "Moving your card…" |
-| 5 | Tunggu sampai selesai | Badge kartu jadi "In Your Wallet" |
-| 6 | Klik "Return to Gachard" | Kartu kembali Digital |
+| 3 | Lihat kartu "Gachard access" | Berlabel **Allowed** |
+| 4 | `/collection` → satu kartu Digital → **Move to My Wallet** | Modal Privy muncul, tanda tangan diterima |
+| 5 | Kembali ke `/wallet` | Kartunya muncul di "Cards in this wallet" |
+| 6 | **Return to Gachard** | Kartu kembali Digital di `/collection` |
+| 7 | Ulangi export, lalu **Send** ke alamat milik Anda sendiri | Kartu berpindah, status jadi Released |
+| 8 | **Reveal private key** | Modal Privy menampilkan kunci |
 
-**Langkah 2 adalah yang paling penting.** Kalau alamat di `/profile` tidak ada di daftar wallet Privy Dashboard, itu wallet eksternal, dan export akan ditolak server dengan pesan "That wallet is not one Gachard can return cards from". Perbaikannya: putuskan wallet eksternal di browser (atau pakai profil browser bersih), lalu login Privy ulang supaya embedded wallet terbentuk.
+Langkah 7 dan 8 hanya untuk memastikan tidak ada kejutan. Kartu yang dipakai di langkah 7 hilang dari Gachard selamanya, jadi jangan pakai kartu yang Anda sayangi.
 
-Kalau langkah 4 gagal, buka console browser. Sekarang tercetak `[privy] export failed:` dengan error asli dari Privy, bukan pesan generik.
+Kalau ada yang gagal, console mencetak `[privy] ...` dengan error aslinya.
 
 ---
 
 ## 3. Persiapan Panggung
 
-**Akun.** Pakai akun yang sudah punya embedded wallet Privy dan minimal dua kartu Digital. Dua supaya kalau satu bermasalah di tengah rekaman, ada cadangan tanpa harus berhenti.
+**Akun.** Punya embedded wallet Privy, akses sudah **Allowed**, dan minimal tiga kartu Digital: satu untuk export/import, satu untuk Send, satu cadangan.
 
-**Tab yang dibuka sebelum merekam**, supaya tidak ada waktu mati:
+**Tab yang dibuka sebelum merekam:**
 
-1. Aplikasi di `/collection`
-2. MonadVision di halaman alamat wallet Privy user
-3. Privy Dashboard, tab Fee Sponsorship
-4. Admin console `/admin`
+1. `/collection`
+2. `/wallet`
+3. MonadVision di halaman alamat wallet Privy
+4. Privy Dashboard, tab Fee Sponsorship
+5. Privy Dashboard, tab Wallets
 
-**Saldo sponsorship.** Cek di Privy Dashboard sebelum mulai. Setiap export memakai satu transaksi sponsored, setiap import satu lagi. Batas harian per user di aplikasi adalah 20 (ADR-031), jadi latihan berulang bisa menghabiskannya. Kalau kena, pesannya "Daily limit for sponsored transactions reached".
+**Saldo sponsorship.** Tiap export, import, dan send memakai satu transaksi sponsored. Batas harian per user 20 (ADR-031), jadi latihan berulang bisa menghabiskannya.
 
-**Jangan pakai akun demo untuk rekaman final.** Akun demo tidak punya riwayat dan namanya muncul sebagai `@Demo29`, yang melemahkan kesan produk nyata.
+**Jangan pakai akun demo untuk rekaman final.** Namanya muncul sebagai `@Demo37` dan melemahkan kesan produk nyata.
 
 ---
 
@@ -68,57 +79,74 @@ Kalau langkah 4 gagal, buka console browser. Sekarang tercetak `[privy] export f
 
 ### Bagian A, konteks (20 detik)
 
-Tampilkan `/collection`. Tunjukkan kartu tampil normal: rarity, artwork, tombol Print dan List. **Tidak ada satu pun istilah blockchain di layar.** Ini premis ADR-002 dan layak ditunjukkan sebelum dibongkar.
+`/collection`. Kartu tampil normal: rarity, artwork, Print, List. **Tidak ada satu pun istilah blockchain.** Ini premis ADR-002, dan layak ditunjukkan sebelum dibongkar.
 
-Katakan: kartu ini disimpan platform atas nama user, dan sekarang user akan mengambilnya.
+Katakan: kartu ini dipegang platform atas nama user, dan sekarang user akan mengambil alih.
 
-### Bagian B, export (40 detik)
+### Bagian B, export (40 detik) — MOMEN 1
 
-1. Klik **"Move to My Wallet"**.
-2. **Modal Privy muncul.** Beri jeda di sini. Ini UI Privy asli, bukan komponen kita, dan ini bukti pertama.
-3. Tanda tangani. Tunjukkan isi yang ditandatangani: tokenId, alamat tujuan, batas waktu.
-4. Status berjalan: "Moving your card…" lalu "Finishing the handover…".
-5. Pindah ke MonadVision, **refresh**. Kartu kini di alamat wallet user.
-6. Kembali ke aplikasi. Badge kartu terbaca **"In Your Wallet"**, dan tombol Print serta List **hilang**.
+1. **Move to My Wallet**.
+2. **Modal Privy muncul.** Beri jeda. Ini UI Privy asli, bukan komponen kita.
+3. Tanda tangani. Tunjukkan isinya: tokenId, alamat tujuan, batas waktu.
+4. MonadVision, refresh. Kartu ada di alamat wallet user.
+5. Kembali ke `/collection`: badge **"In Your Wallet"**, tombol Print dan List **hilang**.
 
-Poin 6 layak disebutkan: platform tidak lagi bisa mencetak atau menjual kartu itu, karena platform tidak memegangnya.
+Poin 5 layak disebut: platform tidak lagi bisa mencetak atau menjualnya, karena tidak memegangnya.
 
-### Bagian C, bukti pembayaran gas (20 detik) — MOMEN KUNCI
+### Bagian C, siapa yang membayar (20 detik) — MOMEN 2
 
 1. Di MonadVision, tunjukkan **saldo MON wallet user: 0**.
-2. Tahan beberapa detik. Jangan buru-buru.
-3. Buka Privy Dashboard → Fee Sponsorship. Transaksinya tercatat di sana.
+2. Tahan beberapa detik.
+3. Privy Dashboard → Fee Sponsorship. Transaksinya tercatat.
 
-Kalimat yang dipakai: wallet ini mengirim transaksi on-chain yang sukses, dan tidak pernah memegang satu wei pun. **Privy yang membayar.**
+Kalimatnya: wallet ini mengirim transaksi on-chain yang sukses dan tidak pernah memegang satu wei pun. **Privy yang membayar.**
 
-Ini bukti satu detik yang tidak bisa dibantah, dan lebih kuat daripada penjelasan apa pun.
+Bukti satu detik, lebih kuat daripada penjelasan apa pun.
 
-### Bagian D, kepemilikan yang nyata (25 detik) — MOMEN KUNCI KEDUA
+### Bagian D, kendali ada di user (35 detik) — MOMEN 3
 
-1. Buka **admin console**.
-2. Telusuri kartu tersebut. Tunjukkan bahwa **tidak ada tombol untuk menariknya kembali.**
-3. Katakan terus terang: ini bukan kelalaian UI. Backend Gachard secara teknis tidak punya kemampuan memindahkan kartu itu. Hanya pemiliknya yang bisa.
+**Bagian ini diganti total.** Versi lama menyuruh menunjukkan bahwa admin console tidak punya tombol untuk menarik kartu, dengan klaim "Gachard secara teknis tidak bisa memindahkannya". **Itu tidak lagi benar** sejak delegasi ada, dan delegasi justru yang membuat import bekerja.
 
-Kontras ini yang paling meyakinkan bahwa integrasinya melampaui autentikasi. Export saja masih bisa diperdebatkan sebagai transfer custodial biasa; ketidakmampuan mengambil kembali tidak bisa.
+Yang sekarang ditunjukkan, dan lebih kuat karena aktif, bukan pasif:
 
-### Bagian E, import (30 detik)
+1. Buka `/wallet`. Tunjuk kartu **"Gachard access"** berlabel **Allowed**.
+2. Katakan apa adanya: Gachard bisa memindahkan kartu di wallet ini **karena user memberi izin**, dan izin itu yang membuat kartu bisa pulang.
+3. Klik **Withdraw access**. Labelnya berubah jadi **Not allowed**.
+4. Katakan: sekarang Gachard tidak bisa menyentuhnya. Satu klik, oleh user, kapan saja.
+5. Klik **Allow** lagi supaya Bagian E bisa jalan.
 
-1. Kembali ke `/collection`, klik **"Return to Gachard"**.
-2. Transfer ini ditandatangani dan dikirim wallet user sendiri, gas dibayar Privy.
-3. Kartu kembali ke status Digital, tombol Print dan List muncul lagi.
-4. Cek ulang saldo MON: masih **0**.
+Mencabut akses di depan kamera membuktikan kendali itu nyata. "Tidak ada tombolnya" hanya membuktikan UI-nya belum dibuat.
+
+### Bagian E, import (25 detik)
+
+1. Di `/wallet`, **Return to Gachard**.
+2. Transfer ini dikirim dari wallet user, gas dibayar Privy.
+3. Kartu kembali Digital di `/collection`, Print dan List muncul lagi.
+4. Saldo MON: masih **0**.
+
+### Bagian F, keluar sepenuhnya (20 detik) — MOMEN 4
+
+Ini yang menutup pertanyaan "benarkah ini milik user".
+
+1. Di `/wallet`, tunjukkan kolom **Send** dengan peringatannya: sekali dikirim, Gachard tidak bisa membawanya kembali.
+2. Tunjukkan **Reveal private key**. Buka modalnya. **Jangan tampilkan kuncinya di rekaman** — cukup perlihatkan bahwa fiturnya ada, lalu tutup.
+3. Katakan: user bisa membawa wallet ini ke aplikasi lain dan meninggalkan Gachard sepenuhnya.
+
+Kalau Anda merekam Send sungguhan, pakai alamat Anda sendiri dan sebutkan bahwa kartunya memang tidak kembali.
 
 ---
 
 ## 5. Kalau Ada yang Gagal Saat Merekam
 
-| Gejala | Kemungkinan | Tindakan saat itu juga |
+| Gejala | Kemungkinan | Tindakan |
 |---|---|---|
-| Modal Privy error generik | Alamat di profil bukan embedded wallet | Pakai kartu cadangan; perbaiki lewat Bagian 2 |
-| "Daily limit reached" | Batas 20 sponsored per hari | Pakai akun lain, atau lanjut besok |
-| Kartu tersangkut "Exported" | Update database hilang | `POST /api/admin/privy-reconcile`, kartu pulih dari kondisi chain |
-| Status berputar lama | Polling belum menemukan konfirmasi | Refresh halaman; status diselesaikan ulang saat dibaca |
-| "Network was busy" | Nonce admin basi | Ulangi; cache sudah di-reset otomatis |
+| `/wallet` menampilkan "Set up" | Sesi Privy hilang | Login ulang lewat tombol itu |
+| "Allow Gachard to return cards…" | Delegasi belum aktif | Bagian D langkah 5, klik Allow |
+| "Not configured on this deployment" | `NEXT_PUBLIC_PRIVY_SIGNER_ID` kosong | Tidak bisa diperbaiki saat rekaman, hentikan |
+| "Daily limit reached" | 20 sponsored per hari | Akun lain, atau lanjut besok |
+| Kartu tersangkut "In Your Wallet" | Update database hilang | `POST /api/admin/privy-reconcile` |
+| Status berputar lama | Polling belum melihat konfirmasi | Refresh; status diselesaikan saat dibaca |
+| "Network was busy" | Nonce admin basi | Ulangi, cache sudah di-reset |
 
 Rekonsiliasi aman dijalankan kapan saja, termasuk di tengah rekaman: ia tidak pernah mengirim transaksi, hanya menyesuaikan database dengan kondisi chain.
 
@@ -128,18 +156,23 @@ Rekonsiliasi aman dijalankan kapan saja, termasuk di tengah rekaman: ia tidak pe
 
 Kejujuran di sini memperkuat, bukan melemahkan.
 
-- **Jangan** bilang ini menggantikan model custodial. Ini jalur opsional. Alur utama tetap custodial, dan itu memang tesis produknya (ADR-002).
-- **Jangan** bilang user bisa mengekspor private key. Tidak bisa, di v1.93.0 fiturnya tidak ada (ADR-028).
-- **Jangan** bilang kartunya bisa dibawa ke MetaMask. Embedded wallet terikat pada app Privy ini.
+- **Jangan** bilang Gachard tidak bisa memindahkan kartu di wallet user. **Bisa**, karena user memberi izin. Yang benar: izinnya eksplisit, terlihat di UI, dan bisa dicabut sewaktu-waktu.
+- **Jangan** bilang ini menggantikan model custodial. Ini jalur opsional; alur utama tetap custodial, dan itu memang tesis produknya (ADR-002).
 - **Jangan** menyebut smart wallet. Sponsorship berjalan di atas EIP-7702 plus ERC-4337 di balik layar, tapi alamatnya tunggal dan tidak ada smart account terpisah yang kita kelola.
+- **Jangan** menampilkan private key di rekaman. Tunjukkan fiturnya, bukan isinya.
 - **Jangan** mengklaim AI risk scoring aktif kecuali `MIMO_API_KEY` sudah diset di produksi. Per 22 September 2026 belum, dan dokumen submission sudah menyatakannya apa adanya.
+
+**Yang sekarang boleh diklaim dan sebelumnya tidak:** export private key **tersedia**. ADR-028 mencatatnya mustahil di v1.93.0; v3 membukanya.
 
 ---
 
 ## 7. Setelah Merekam
 
 1. Bersihkan akun demo yang menumpuk di produksi kalau sempat dipakai latihan.
-2. Pastikan kartu yang dipakai demo kembali berstatus Digital, bukan tertinggal di wallet.
-3. ~~Perbarui `MONAD-SUBMISSION.md` dan README yang masih menyebut export sebagai roadmap.~~ **Selesai 22 September 2026.** Keduanya kini menyatakan export/import sebagai fitur live, dan tetap menyebut batasan yang masih berlaku (key export tidak tersedia di v1.93.0).
+2. Pastikan kartu demo kembali berstatus Digital, kecuali yang sengaja di-Send.
+3. Pastikan **Gachard access** kembali **Allowed** kalau Bagian D dicabut dan tidak dipulihkan.
+4. ~~Perbarui `MONAD-SUBMISSION.md` dan README yang menyebut export sebagai roadmap.~~ **Selesai 22 September 2026.**
+5. **Amandemen ADR-028.** Alasan pinning ke v1.93.0 sudah terbukti tidak berlaku: v3.44.0 build dan jalan di Turbopack, dan membuka `useSigners` serta `useExportWallet`. ADR itu sekarang mendeskripsikan kendala yang sudah tidak ada.
+6. Perbarui `MONAD-SUBMISSION.md` sekali lagi: export private key kini tersedia, dan ada halaman `/wallet` tersendiri.
 
-Dokumen yang meremehkan fitur sendiri sama merugikannya dengan dokumen yang melebih-lebihkan. Yang tersisa hanya memastikan klaimnya tetap cocok dengan yang terlihat di rekaman.
+Poin 5 yang paling penting. ADR yang menyatakan sesuatu mustahil, padahal kode di repo membuktikan sebaliknya, lebih menyesatkan daripada tidak ada ADR sama sekali.
