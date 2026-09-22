@@ -7,7 +7,8 @@
  * what to send there. Both draw cards and both head their sections the same
  * way, so the vocabulary lives here rather than being copied and drifting.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -323,5 +324,119 @@ export function WalletAddress({ address }: { address: string }) {
           than looking at it. */}
       <span className="sr-only">{address}</span>
     </div>
+  );
+}
+
+/**
+ * Confirm sending a card out of Gachard for good.
+ *
+ * "Send away" used to fire on one click. The server validates the destination
+ * with ethers.getAddress, which rejects a malformed string but cannot reject a
+ * valid wrong one: a typo that still checksums, an exchange deposit address
+ * that cannot hold ERC-1155, a contract with no receiver hook. Those are the
+ * cases where a card is actually lost, and nothing stood between the click and
+ * the loss.
+ *
+ * So the destination is shown here in full, every character, wrapped rather
+ * than shortened — this is the one screen where the middle of an address
+ * matters, because checking it is the whole point of the step.
+ *
+ * Portalled to document.body: `.glass` sets backdrop-filter, which makes any
+ * glass ancestor a containing block for fixed positioning and would leave this
+ * anchored to a card tile instead of the viewport.
+ */
+export function SendAwayDialog({
+  card,
+  to,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  card: WalletCard;
+  to: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel, busy]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={() => !busy && onCancel()}
+      data-testid="send-confirm-dialog"
+    >
+      <div
+        className="glass w-full max-w-sm p-6"
+        style={{ borderColor: "rgba(255,107,186,0.35)" }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Confirm sending this card away"
+      >
+        <p
+          className="text-[0.72rem] uppercase tracking-[0.22em] mb-3"
+          style={{ color: "var(--aurora-pink)" }}
+        >
+          This cannot be undone
+        </p>
+
+        <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-tertiary)" }}>
+          <span style={{ color: "var(--text-secondary)" }}>
+            {card.templateName ?? `Card #${card.tokenId}`}
+          </span>{" "}
+          {card.cardId ? `(Card ID: #${card.cardId})` : null} leaves Gachard for good. Neither you
+          nor Gachard can bring it back, and a wrong address loses it.
+        </p>
+
+        <p
+          className="text-[0.6rem] uppercase tracking-[0.14em] mb-1.5"
+          style={{ color: "var(--text-tertiary)" }}
+        >
+          Check the destination
+        </p>
+        <p
+          className="card-surface px-3 py-2.5 text-[0.75rem] font-mono break-all mb-5"
+          style={{ color: "var(--text-secondary)" }}
+          data-testid="send-confirm-address"
+        >
+          {to}
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className="flex-1 py-2.5 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
+            style={{
+              background: "rgba(255,107,186,0.14)",
+              border: "1px solid rgba(255,107,186,0.45)",
+              color: "var(--aurora-pink)",
+            }}
+            data-testid="send-confirm-btn"
+          >
+            {busy ? "Sending…" : "Send permanently"}
+          </button>
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="btn-ghost !py-2.5 !px-5 !text-xs disabled:opacity-50"
+            data-testid="send-cancel-btn"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }

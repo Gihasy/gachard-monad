@@ -37,6 +37,7 @@ import { privyConfig } from "@/lib/privy-config";
 import {
   CardFrame,
   Eyebrow,
+  SendAwayDialog,
   WalletAddress,
   MoveCardsBanner,
   EXPLORER,
@@ -71,6 +72,9 @@ function Workspace() {
   const [err, setErr] = useState<string | null>(null);
   const [sendTo, setSendTo] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // The card awaiting confirmation, and where it would go. Held here rather
+  // than inside the tile so only one can be pending at a time.
+  const [pendingSend, setPendingSend] = useState<{ card: WalletCard; to: string } | null>(null);
   const [returnNote, setReturnNote] = useState<string | null>(null);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
@@ -137,7 +141,7 @@ function Workspace() {
   }, [ready, authenticated, address, bound]);
 
   const act = useCallback(
-    async (key: string, run: () => Promise<Response>, okNote: string) => {
+    async (key: string, run: () => Promise<Response>, okNote: string): Promise<boolean> => {
       setBusy(key);
       setErr(null);
       setNote(null);
@@ -147,8 +151,10 @@ function Workspace() {
         if (!res.ok) throw new Error(body?.error ?? "That did not work.");
         setNote(okNote);
         await load();
+        return true;
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Something went wrong.");
+        return false;
       } finally {
         setBusy(null);
       }
@@ -412,13 +418,7 @@ function Workspace() {
                           />
                         </div>
                         <button
-                          onClick={() =>
-                            act(
-                              `send-${id}`,
-                              post("/api/privy/send", { cardId: c.cardId, to: addr }),
-                              "Sent. This card has left Gachard for good."
-                            )
-                          }
+                          onClick={() => setPendingSend({ card: c, to: addr })}
                           disabled={busy !== null || !addr}
                           className="w-full mt-2 py-2 text-[0.62rem] rounded-xl transition-all disabled:opacity-40"
                           style={{
@@ -508,6 +508,32 @@ function Workspace() {
           Reveal private key
         </button>
       </section>
+      )}
+
+      {pendingSend && (
+        <SendAwayDialog
+          card={pendingSend.card}
+          to={pendingSend.to}
+          busy={busy !== null}
+          onCancel={() => setPendingSend(null)}
+          onConfirm={async () => {
+            const { card, to } = pendingSend;
+            const id = card.cardId ?? String(card.tokenId);
+            const sent = await act(
+              `send-${id}`,
+              post("/api/privy/send", { cardId: card.cardId, to }),
+              "Sent. This card has left Gachard for good."
+            );
+            // On failure the dialog stays open with the address still typed,
+            // so the attempt can be repeated or corrected rather than started
+            // over. On success the field is cleared: it would otherwise hold
+            // the address of a card that is gone, ready to be fired at the
+            // next one.
+            if (!sent) return;
+            setPendingSend(null);
+            setSendTo((prev) => ({ ...prev, [id]: "" }));
+          }}
+        />
       )}
 
       {(note || err) && (
