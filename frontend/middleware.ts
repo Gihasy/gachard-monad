@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE_NAME = "gachard_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
+const ADMIN_COOKIE_NAME = "gachard_admin";
+const ADMIN_MAX_AGE = 60 * 60 * 8; // one working session
+const ADMIN_REALM = "Gachard Admin";
+
 const PROTECTED = ["/collection", "/profile", "/topup", "/wallet"];
 
 // Public API routes that don't require authentication
@@ -87,12 +91,103 @@ async function verifySessionTokenEdge(token: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Admin access: HTTP Basic, then a signed cookie.
+ *
+ * The console and its seventeen API routes used to be waved straight through.
+ * Six of those only read, but ten change state: /fulfillment moves a card
+ * through the print queue on nothing but a tokenId, and /confirm-all sends a
+ * transaction from the admin wallet. Neither asked who was calling.
+ *
+ * Basic auth alone would not have been enough. A browser caches those
+ * credentials per path subtree, and /admin and /api/admin are siblings rather
+ * than nested — so the page would authenticate and then its own fetches would
+ * be refused. Passing Basic gets a short-lived signed cookie instead, which is
+ * sent with every same-origin request regardless of path, and the middleware
+ * accepts either.
+ *
+ * Eight hours, not thirty days: this is a workbench, not a login.
+ */
+async function adminCookieValid(token: string | undefined): Promise<boolean> {
+  if (!token) return false;
+  const [tsStr, sig] = token.split(".");
+  if (!tsStr || !sig) return false;
+
+  const secret = process.env.ENCRYPTION_SECRET_KEY;
+  if (!secret || secret.length < 32) return false;
+  if (!safeEqualHex(sig, await hmacSha256(`admin.${tsStr}`, secret))) return false;
+
+  const age = Math.floor(Date.now() / 1000) - parseInt(tsStr, 10);
+  return Number.isFinite(age) && age >= 0 && age <= ADMIN_MAX_AGE;
+}
+
+async function mintAdminCookie(): Promise<string | null> {
+  const secret = process.env.ENCRYPTION_SECRET_KEY;
+  if (!secret || secret.length < 32) return null;
+  const ts = String(Math.floor(Date.now() / 1000));
+  return `${ts}.${await hmacSha256(`admin.${ts}`, secret)}`;
+}
+
+function basicAuthOk(header: string | null): boolean {
+  const user = process.env.ADMIN_USERNAME;
+  const pass = process.env.ADMIN_PASSWORD;
+  // Refuse rather than fall open. A deployment missing these should be
+  // unreachable, not unguarded.
+  if (!user || !pass) return false;
+  if (!header?.startsWith("Basic ")) return false;
+
+  let decoded: string;
+  try {
+    decoded = atob(header.slice(6));
+  } catch {
+    return false;
+  }
+
+  const at = decoded.indexOf(":");
+  if (at < 0) return false;
+  // Both halves are compared, and neither short-circuits on the other.
+  const okUser = safeEqual(decoded.slice(0, at), user);
+  const okPass = safeEqual(decoded.slice(at + 1), pass);
+  return okUser && okPass;
+}
+
+function adminChallenge(pathname: string) {
+  const body = pathname.startsWith("/api/")
+    ? { error: "Admin authentication required" }
+    : null;
+  const headers = { "WWW-Authenticate": `Basic realm="${ADMIN_REALM}", charset="UTF-8"` };
+
+  return body
+    ? NextResponse.json(body, { status: 401, headers })
+    : new NextResponse("Authentication required", { status: 401, headers });
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Admin routes: No auth required (accessible to all logged-in users)
+  // Admin console and its API. See adminCookieValid above for why this is not
+  // Basic auth alone.
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
-    return NextResponse.next();
+    if (await adminCookieValid(req.cookies.get(ADMIN_COOKIE_NAME)?.value)) {
+      return NextResponse.next();
+    }
+
+    if (!basicAuthOk(req.headers.get("authorization"))) {
+      return adminChallenge(pathname);
+    }
+
+    const response = NextResponse.next();
+    const token = await mintAdminCookie();
+    if (token) {
+      response.cookies.set(ADMIN_COOKIE_NAME, token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: ADMIN_MAX_AGE,
+      });
+    }
+    return response;
   }
 
   // API routes: session-based auth (except public APIs and auth endpoints)
