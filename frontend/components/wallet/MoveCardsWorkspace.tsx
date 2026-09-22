@@ -25,7 +25,7 @@ import {
   buildExportIntentDomain,
   EXPORT_INTENT_SIGNING_TYPES,
 } from "@/lib/export-intent";
-import { monadTestnet } from "@/lib/monad-testnet";
+import { privyConfig } from "@/lib/privy-config";
 import {
   Eyebrow,
   POLL_INTERVAL_MS,
@@ -487,12 +487,7 @@ export default function MoveCardsWorkspace() {
   return (
     <PrivyProvider
       appId={appId}
-      config={{
-        defaultChain: monadTestnet,
-        supportedChains: [monadTestnet],
-        loginMethods: ["google", "email"],
-        embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
-      }}
+      config={privyConfig}
     >
       <Workspace />
     </PrivyProvider>

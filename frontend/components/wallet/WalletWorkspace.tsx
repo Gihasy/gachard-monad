@@ -32,7 +32,7 @@ import {
   useSigners,
   useWallets,
 } from "@privy-io/react-auth";
-import { monadTestnet } from "@/lib/monad-testnet";
+import { privyConfig } from "@/lib/privy-config";
 import {
   Eyebrow,
   EXPLORER,
@@ -498,12 +498,7 @@ export default function WalletWorkspace() {
   return (
     <PrivyProvider
       appId={appId}
-      config={{
-        defaultChain: monadTestnet,
-        supportedChains: [monadTestnet],
-        loginMethods: ["google", "email"],
-        embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
-      }}
+      config={privyConfig}
     >
       <Workspace />
     </PrivyProvider>

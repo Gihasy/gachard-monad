@@ -26,7 +26,7 @@ import {
   usePrivy,
   useWallets,
 } from "@privy-io/react-auth";
-import { monadTestnet } from "@/lib/monad-testnet";
+import { privyConfig } from "@/lib/privy-config";
 
 /**
  * The supplied Privy wordmark, used as given: white on transparent, only
@@ -305,12 +305,7 @@ export default function PrivyWalletSection() {
   return (
     <PrivyProvider
       appId={appId}
-      config={{
-        defaultChain: monadTestnet,
-        supportedChains: [monadTestnet],
-        loginMethods: ["google", "email"],
-        embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
-      }}
+      config={privyConfig}
     >
       <PrivyWalletContent />
     </PrivyProvider>
