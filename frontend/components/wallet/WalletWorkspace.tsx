@@ -23,6 +23,7 @@
  * page, so "this cannot be undone" registers before the label is read.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import WalletHistory from "./WalletHistory";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -566,6 +567,11 @@ function Workspace() {
         </section>
 
       </div>
+
+      {/* Full width, below the cards. It is a reference table rather than
+          something to act on, so it sits after everything actionable and
+          before the destructive block at the foot. */}
+      <WalletHistory />
 
       {/* Full control. Full width rather than in the sidebar: on a phone it
           would otherwise sit between the access card and the cards, putting a
