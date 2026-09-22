@@ -64,15 +64,38 @@ const CLEAR_EXPORT_CYCLE = {
  * Matched by the Privy transaction id when the card still carries one, and
  * otherwise by the newest pending import for that token — a card whose
  * importTxId was lost still has a row that should not say "Processing".
+ *
+ * The hash is fetched, not left null. This settled the status and stopped
+ * there, so a completed return kept `txHash: null` for good and the wallet's
+ * activity table showed it as having never touched the chain — when the
+ * transfer is exactly what put the card back. The same gap was fixed for
+ * outbound sends and missed here, because only the send path was traced.
+ *
+ * Asking is best effort. By the time this runs the card is demonstrably home,
+ * so the status is settled whether or not Privy answers; only the hash
+ * depends on it.
  */
 async function settleImportTransaction(importTxId: string | undefined, tokenId: number) {
   const txs = await getCollection("transactions");
   const now = new Date().toISOString();
 
+  let hash: string | null = null;
+  if (importTxId) {
+    try {
+      const st = await getSponsoredStatus(importTxId);
+      if (st.confirmed && st.hash) hash = st.hash;
+    } catch {
+      /* settle without it rather than leave the row reading "Processing" */
+    }
+  }
+
+  const settled: Record<string, unknown> = { status: "confirmed", updatedAt: now };
+  if (hash) settled.txHash = hash;
+
   if (importTxId) {
     const byId = await txs.updateOne(
       { privyTxId: importTxId, status: "pending" },
-      { $set: { status: "confirmed", updatedAt: now } }
+      { $set: settled }
     );
     if (byId.matchedCount > 0) return;
   }
@@ -82,7 +105,7 @@ async function settleImportTransaction(importTxId: string | undefined, tokenId: 
   // settled instead of the current return.
   await txs.findOneAndUpdate(
     { type: "privy_import", tokenId, status: "pending" },
-    { $set: { status: "confirmed", updatedAt: now } },
+    { $set: settled },
     { sort: { createdAt: -1 } }
   );
 }

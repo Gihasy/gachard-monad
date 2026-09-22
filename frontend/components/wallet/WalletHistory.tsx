@@ -196,10 +196,12 @@ export default function WalletHistory() {
                           {short(tx.txHash)}
                         </a>
                       ) : (
-                        // A missing hash means three different things, and
-                        // collapsing them into one word was wrong for two of
-                        // them. Still settling is not the same as never
-                        // recorded, and neither is the same as never on chain.
+                        // Every row in this table is an on-chain movement, so
+                        // "Off chain" was never a truthful option here — it
+                        // was the fallback, and it caught completed returns
+                        // whose hash had simply never been fetched. A missing
+                        // hash means one of two things: the transfer has not
+                        // settled yet, or Gachard does not have the hash.
                         <span
                           style={{ color: "var(--text-tertiary)" }}
                           title={
@@ -207,14 +209,10 @@ export default function WalletHistory() {
                               ? "Waiting for the network to confirm this transfer."
                               : tx.type === "privy_receive"
                                 ? "Gachard did not carry this transfer, so it has no record of the hash. The card's arrival was confirmed by reading the chain."
-                                : "No on-chain transaction was made for this."
+                                : "This transfer settled before Gachard recorded its hash. The movement is real; the reference is missing."
                           }
                         >
-                          {tx.status === "Processing"
-                            ? "Settling…"
-                            : tx.type === "privy_receive"
-                              ? "Not recorded"
-                              : "Off chain"}
+                          {tx.status === "Processing" ? "Settling…" : "Not recorded"}
                         </span>
                       )}
                     </td>
