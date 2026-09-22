@@ -285,7 +285,7 @@ Four properties make the result auditable:
 **Status**: Accepted, 22 September 2026, **file renamed 23 September 2026** (see the note at the end; the decision is unchanged)
 **Note**: no ADR ever recorded how sessions work in this app. The cookie, the HMAC, the client-written fallback and the two different gates all arrived without one, which is part of why the gap survived as long as it did. This ADR states the mechanism as well as the change.
 
-**Decision**: a request is authenticated by the signed `gachard_session` cookie and by nothing else. `getAuthenticatedUser()` has no fallback. The middleware verifies the same HMAC for protected pages that it already verified for APIs. Logging out is a server round trip. Public endpoints do not emit user identifiers.
+**Decision**: a request is authenticated by the signed `gachard_session` cookie and by nothing else. `getAuthenticatedUser()` has no fallback. The gate verifies the same HMAC for protected pages that it already verified for APIs. Logging out is a server round trip. Public endpoints do not emit user identifiers.
 
 **Reason**: the previous arrangement was not a weak check, it was an open door, and it is worth recording exactly how the pieces combined — no single one of them looks alarming on its own.
 

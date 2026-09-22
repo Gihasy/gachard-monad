@@ -139,6 +139,16 @@ Ini yang menutup pertanyaan "benarkah ini milik user".
 
 Kalau Anda merekam Transfer sungguhan, pakai alamat Anda sendiri dan sebutkan bahwa kartunya memang tidak kembali.
 
+### Bagian G, buku besarnya (15 detik) — ditambahkan 23 September
+
+Gulir ke bawah di `/wallet`, ke **Wallet activity**.
+
+1. Tunjuk arahnya: **In** saat kartu masuk, **Out** saat keluar. Arah itu diturunkan dari alamat mana yang muncul di sisi pengirim atau penerima, bukan dari nama aksinya.
+2. Klik satu **hash**. Ia membuka MonadVision. Katakan alasannya dengan lugas: baris lain di tabel itu adalah Gachard menceritakan apa yang Gachard lakukan; hash adalah bagian yang bisa diperiksa tanpa mempercayai kami.
+3. Kalau sebuah baris berbunyi **Not recorded**, jangan dilewati — justru itu beatnya. Artinya kartu itu masuk lewat transfer yang tidak dilakukan Gachard, jadi Gachard tidak punya hash-nya dan berkata begitu alih-alih mengarang.
+
+Tombol **Refresh** di atas daftar kartu memeriksa rantai, bukan sekadar membaca ulang database. Itu yang menemukan kartu yang dikirim masuk dari luar aplikasi.
+
 ---
 
 ## 5. Kalau Ada yang Gagal Saat Merekam
@@ -150,7 +160,8 @@ Kalau Anda merekam Transfer sungguhan, pakai alamat Anda sendiri dan sebutkan ba
 | "Not configured on this deployment" | `NEXT_PUBLIC_PRIVY_SIGNER_ID` kosong | Tidak bisa diperbaiki saat rekaman, hentikan |
 | "Daily limit reached" | 20 sponsored per hari | Akun lain, atau lanjut besok |
 | Kartu tersangkut "In Your Wallet" | Update database hilang | `POST /api/admin/privy-reconcile` |
-| Status berputar lama | Polling belum melihat konfirmasi | Refresh; status diselesaikan saat dibaca |
+| Status berputar lama | Polling belum melihat konfirmasi | Tombol **Refresh** di atas daftar kartu |
+| Kartu dikirim masuk dari luar tidak muncul | Tidak ada jejaknya di database, hanya di rantai | Tombol **Refresh** — ia memanggil `POST /api/privy/reconcile` lebih dulu |
 | "Network was busy" | Nonce admin basi | Ulangi, cache sudah di-reset |
 
 Rekonsiliasi aman dijalankan kapan saja, termasuk di tengah rekaman: ia tidak pernah mengirim transaksi, hanya menyesuaikan database dengan kondisi chain.

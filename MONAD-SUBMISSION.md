@@ -30,7 +30,7 @@ That is the default, not the ceiling. A user who wants custody of their own card
 - **AI Anomaly Detection**: Wash-trading risk scoring on marketplace trades via MiMo LLM, with the resulting score written on-chain through `recordVerification()`. Requires `MIMO_API_KEY`; without it the call degrades to a neutral score rather than failing the trade
 - **Dismantle & Crystal**: Burn cards to earn Crystal currency
 - **QR Verification**: Scan physical cards for authenticity verification
-- **Admin Console**: Full management for users, cards, transactions, prints
+- **Admin Console**: Full management for users, cards, transactions, prints. Open without an account so the print-to-approval flow can be followed end to end; personal details and every state-changing action stay behind admin credentials
 
 ## Technical Highlights
 

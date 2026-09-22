@@ -198,7 +198,7 @@ stateDiagram-v2
 - **Transaction History**: Full transaction history in Profile page
 - **Unique Card ID**: Each card has a unique hex ID (e.g. `#8a866`)
 - **Invoice ID**: Each transaction has an Invoice ID (e.g. `GC-20260730-a3f1`)
-- **Admin Console**: Manage users, transactions, cards, print requests, monitor MON balances. Every tab has search, filters and sorting matched to what that tab is for
+- **Admin Console**: Manage users, transactions, cards, print requests, monitor MON balances. Every tab has search, filters and sorting matched to what that tab is for. Readable without an account so the print-to-approval flow can be followed, but the people in that flow are not public: personal fields are withheld until an admin signs in, and state-changing routes need credentials
 - **Trade Marketplace**: Buy/sell cards between users with FVM pricing
 - **Dismantle & Crystal**: Burn cards to earn Crystal currency
 - **AI Anomaly Detection**: Wash-trading detection on marketplace
@@ -362,9 +362,20 @@ All blockchain transactions are verifiable on Monad Explorer:
 - **Balance Monitoring**: Real-time MON balance for admin wallet (gas) and PackEntropy (entropy fee)
 - **Copy Address**: One-click copy for contract addresses with visual feedback
 - **Transaction Tracking**: All transactions with clickable txHash links to Monad Explorer
-- **User Wallets**: View user wallet addresses
+- **User Wallets**: View user wallet addresses (admin sign-in required; withheld from anonymous visitors)
 - **Token IDs**: Track NFT tokens on blockchain
 - **Risk Scores**: AI anomaly detection results
+
+## API and Logic Tests
+
+```bash
+cd frontend && npx tsx scripts/suite-api.ts    # needs a server running
+```
+
+68 checks over authentication boundaries, the public marketplace response, the
+public admin tier, logout, redeem, the EIP-712 batch signature, rate limits,
+reconciliation, Privy binding, released cards and scanned QR payloads. It
+builds its own fixture, deletes it, and prints what it left behind.
 
 ## Smart Contract Tests
 
@@ -442,6 +453,14 @@ consumer surfaces carry no wallet actions for anyone (ADR-002, amended). One
 EIP-712 signature authorises a whole selection; the transfers still run one
 request per card, because ADR-018 caps a function at ten seconds.
 
+`/wallet` also shows **Wallet activity** — what came in and what went out,
+each row with a direction and a transaction hash linking to the explorer. It
+is the wallet's own ledger rather than the account's, and it is scoped to
+cards from the Gachard ecosystem: these are Gachard's records, not the chain,
+so a token sent to the address from outside the app appears only once the card
+list is refreshed, and then without a hash. The page says so rather than
+implying completeness.
+
 **Known limitation:** revealing the wallet's private key is built and switched
 off. `useExportWallet` is available on v3.44.0 — the constraint ADR-028
 described is gone — but a revealed key cannot be un-revealed, so it stays
@@ -459,6 +478,8 @@ AI-powered visual card analysis is planned as a complementary verification layer
 - All changes must be compatible with locked ADRs
 - Test on mobile (iPhone 12 Pro/390px, Galaxy S8+/360px) before deploying
 - Use `getAuthenticatedUser(req)` for all API routes (server-side session)
+- The auth gate is `frontend/proxy.ts`, not `middleware.ts` — Next 16 renamed the convention, and a proxy always runs on the Node.js runtime
+- A public endpoint returns a document only through an explicit field list, and that list must not name people (ADR-032)
 - All blockchain transactions use async pattern (ADR-018)
 
 ## License
