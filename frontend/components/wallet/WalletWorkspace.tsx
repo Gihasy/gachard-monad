@@ -37,7 +37,7 @@ import { privyConfig } from "@/lib/privy-config";
 import {
   CardFrame,
   Eyebrow,
-  SendAwayDialog,
+  TransferDialog,
   WalletAddress,
   MoveCardsBanner,
   EXPLORER,
@@ -70,11 +70,10 @@ function Workspace() {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [sendTo, setSendTo] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  // The card awaiting confirmation, and where it would go. Held here rather
-  // than inside the tile so only one can be pending at a time.
-  const [pendingSend, setPendingSend] = useState<{ card: WalletCard; to: string } | null>(null);
+  // The card being transferred out. The destination lives in the dialog, which
+  // is the only place it is ever typed.
+  const [transferring, setTransferring] = useState<WalletCard | null>(null);
   const [returnNote, setReturnNote] = useState<string | null>(null);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
@@ -387,7 +386,6 @@ function Workspace() {
                 {cards.map((c) => {
                   const id = c.cardId ?? String(c.tokenId);
                   const on = picked.has(id);
-                  const addr = (sendTo[id] ?? "").trim();
                   return (
                     <CardFrame
                       key={id}
@@ -405,30 +403,23 @@ function Workspace() {
                       }
                     >
                       {/* Irreversible, so it is set apart by a rule rather than
-                          sitting flush with the reversible action above it. */}
+                          sitting flush with the reversible action above it. The
+                          address is asked for in the dialog, not left sitting
+                          open on every tile where a stray paste is one click
+                          from permanent. */}
                       <div className="mt-2 pt-2 px-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-                        <div className="form-field">
-                          <input
-                            value={sendTo[id] ?? ""}
-                            onChange={(e) => setSendTo((s) => ({ ...s, [id]: e.target.value }))}
-                            placeholder="0x… send elsewhere"
-                            spellCheck={false}
-                            className="!text-[0.62rem] !py-2 !px-2.5 !rounded-lg font-mono"
-                            data-testid={`wallet-send-input-${c.tokenId}`}
-                          />
-                        </div>
                         <button
-                          onClick={() => setPendingSend({ card: c, to: addr })}
-                          disabled={busy !== null || !addr}
-                          className="w-full mt-2 py-2 text-[0.62rem] rounded-xl transition-all disabled:opacity-40"
+                          onClick={() => setTransferring(c)}
+                          disabled={busy !== null}
+                          className="w-full py-2 text-[0.62rem] rounded-xl transition-all disabled:opacity-40"
                           style={{
-                            background: addr ? "rgba(255,107,186,0.12)" : "rgba(255,255,255,0.05)",
-                            border: `1px solid ${addr ? "rgba(255,107,186,0.35)" : "var(--border-strong)"}`,
-                            color: addr ? "var(--aurora-pink)" : "var(--text-tertiary)",
+                            background: "rgba(255,107,186,0.12)",
+                            border: "1px solid rgba(255,107,186,0.35)",
+                            color: "var(--aurora-pink)",
                           }}
-                          data-testid={`wallet-send-${c.tokenId}`}
+                          data-testid={`wallet-transfer-${c.tokenId}`}
                         >
-                          {busy === `send-${id}` ? "Sending…" : "Send away"}
+                          {busy === `send-${id}` ? "Transferring…" : "Transfer"}
                         </button>
                       </div>
                     </CardFrame>
@@ -472,7 +463,7 @@ function Workspace() {
                 </div>
               </div>
               <p className="text-[0.65rem] mt-3" style={{ color: "var(--text-tertiary)" }}>
-                Sending a card elsewhere is permanent. Gachard cannot bring it back.
+                Transferring a card elsewhere is permanent. Gachard cannot bring it back.
               </p>
             </>
           )}
@@ -510,28 +501,23 @@ function Workspace() {
       </section>
       )}
 
-      {pendingSend && (
-        <SendAwayDialog
-          card={pendingSend.card}
-          to={pendingSend.to}
+      {transferring && (
+        <TransferDialog
+          card={transferring}
           busy={busy !== null}
-          onCancel={() => setPendingSend(null)}
-          onConfirm={async () => {
-            const { card, to } = pendingSend;
+          onCancel={() => setTransferring(null)}
+          onConfirm={async (to) => {
+            const card = transferring;
             const id = card.cardId ?? String(card.tokenId);
             const sent = await act(
               `send-${id}`,
               post("/api/privy/send", { cardId: card.cardId, to }),
-              "Sent. This card has left Gachard for good."
+              "Transferred. This card has left Gachard for good."
             );
             // On failure the dialog stays open with the address still typed,
-            // so the attempt can be repeated or corrected rather than started
-            // over. On success the field is cleared: it would otherwise hold
-            // the address of a card that is gone, ready to be fired at the
-            // next one.
+            // so the attempt can be corrected rather than started over.
             if (!sent) return;
-            setPendingSend(null);
-            setSendTo((prev) => ({ ...prev, [id]: "" }));
+            setTransferring(null);
           }}
         />
       )}

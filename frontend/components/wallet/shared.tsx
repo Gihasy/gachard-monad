@@ -328,36 +328,47 @@ export function WalletAddress({ address }: { address: string }) {
 }
 
 /**
- * Confirm sending a card out of Gachard for good.
+ * Transfer a card out of Gachard, in two steps.
  *
- * "Send away" used to fire on one click. The server validates the destination
- * with ethers.getAddress, which rejects a malformed string but cannot reject a
- * valid wrong one: a typo that still checksums, an exchange deposit address
- * that cannot hold ERC-1155, a contract with no receiver hook. Those are the
- * cases where a card is actually lost, and nothing stood between the click and
- * the loss.
+ * The address field used to sit open on every card tile, beside a "Send away"
+ * button. That put the most dangerous input in the app on permanent display,
+ * on every card, where a stray paste is one click from being irreversible.
+ * Nothing opens now until the user asks for it.
  *
- * So the destination is shown here in full, every character, wrapped rather
- * than shortened — this is the one screen where the middle of an address
- * matters, because checking it is the whole point of the step.
+ * Two steps on purpose. The caution and the field come first; then the address
+ * is shown back, on its own, to be read rather than typed. Checking what you
+ * just typed in the box you typed it into is not really checking — the second
+ * screen is what makes "check it again" mean anything.
+ *
+ * The server validates with ethers.getAddress, which rejects a malformed
+ * string but cannot reject a valid wrong one: a typo that still checksums, an
+ * exchange deposit address that cannot hold ERC-1155, a contract with no
+ * receiver hook. Those are the cases where a card is actually lost, and no
+ * amount of validation catches them. Only the person looking at the address
+ * can.
  *
  * Portalled to document.body: `.glass` sets backdrop-filter, which makes any
  * glass ancestor a containing block for fixed positioning and would leave this
  * anchored to a card tile instead of the viewport.
  */
-export function SendAwayDialog({
+export function TransferDialog({
   card,
-  to,
   busy,
   onCancel,
   onConfirm,
 }: {
   card: WalletCard;
-  to: string;
   busy: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (to: string) => void;
 }) {
+  const [to, setTo] = useState("");
+  const [step, setStep] = useState<"address" | "confirm">("address");
+  const trimmed = to.trim();
+  // Shape only. Whether it is the RIGHT address is the thing no check can
+  // answer, which is what the second step is for.
+  const looksLikeAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmed);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onCancel();
@@ -368,12 +379,14 @@ export function SendAwayDialog({
 
   if (typeof document === "undefined") return null;
 
+  const name = card.templateName ?? `Card #${card.tokenId}`;
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
       onClick={() => !busy && onCancel()}
-      data-testid="send-confirm-dialog"
+      data-testid="transfer-dialog"
     >
       <div
         className="glass w-full max-w-sm p-6"
@@ -381,60 +394,124 @@ export function SendAwayDialog({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Confirm sending this card away"
+        aria-label={`Transfer ${name} out of Gachard`}
       >
-        <p
-          className="text-[0.72rem] uppercase tracking-[0.22em] mb-3"
-          style={{ color: "var(--aurora-pink)" }}
-        >
-          This cannot be undone
-        </p>
+        {step === "address" ? (
+          <>
+            <p
+              className="text-[0.72rem] uppercase tracking-[0.22em] mb-3"
+              style={{ color: "var(--aurora-pink)" }}
+            >
+              Transfer out of Gachard
+            </p>
 
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-tertiary)" }}>
-          <span style={{ color: "var(--text-secondary)" }}>
-            {card.templateName ?? `Card #${card.tokenId}`}
-          </span>{" "}
-          {card.cardId ? `(Card ID: #${card.cardId})` : null} leaves Gachard for good. Neither you
-          nor Gachard can bring it back, and a wrong address loses it.
-        </p>
+            <div
+              className="rounded-xl p-3.5 mb-4"
+              style={{
+                background: "rgba(255,107,186,0.07)",
+                border: "1px solid rgba(255,107,186,0.25)",
+              }}
+              data-testid="transfer-caution"
+            >
+              <p className="text-[0.78rem] leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
+                <span style={{ color: "var(--text-secondary)" }}>
+                  Make sure the address is right, then check it again.
+                </span>{" "}
+                A card sent to the wrong address is gone. Gachard cannot help you get it back,
+                and neither can anyone else.
+              </p>
+            </div>
 
-        <p
-          className="text-[0.6rem] uppercase tracking-[0.14em] mb-1.5"
-          style={{ color: "var(--text-tertiary)" }}
-        >
-          Check the destination
-        </p>
-        <p
-          className="card-surface px-3 py-2.5 text-[0.75rem] font-mono break-all mb-5"
-          style={{ color: "var(--text-secondary)" }}
-          data-testid="send-confirm-address"
-        >
-          {to}
-        </p>
+            <label
+              className="block text-[0.6rem] uppercase tracking-[0.14em] mb-1.5"
+              style={{ color: "var(--text-tertiary)" }}
+            >
+              Destination address
+            </label>
+            <div className="form-field">
+              <input
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                placeholder="0x…"
+                spellCheck={false}
+                autoFocus
+                className="!text-[0.75rem] font-mono"
+                data-testid="transfer-address-input"
+              />
+            </div>
+            {trimmed.length > 0 && !looksLikeAddress && (
+              <p className="text-[0.68rem] mt-2" style={{ color: "var(--aurora-gold)" }} data-testid="transfer-shape-hint">
+                That is not a complete address. One should be 0x followed by 40 characters.
+              </p>
+            )}
 
-        <div className="flex gap-2">
-          <button
-            onClick={onConfirm}
-            disabled={busy}
-            className="flex-1 py-2.5 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
-            style={{
-              background: "rgba(255,107,186,0.14)",
-              border: "1px solid rgba(255,107,186,0.45)",
-              color: "var(--aurora-pink)",
-            }}
-            data-testid="send-confirm-btn"
-          >
-            {busy ? "Sending…" : "Send permanently"}
-          </button>
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="btn-ghost !py-2.5 !px-5 !text-xs disabled:opacity-50"
-            data-testid="send-cancel-btn"
-          >
-            Cancel
-          </button>
-        </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setStep("confirm")}
+                disabled={!looksLikeAddress}
+                className="btn-primary !py-2.5 !text-xs flex-1 disabled:opacity-40"
+                data-testid="transfer-next-btn"
+              >
+                Continue
+              </button>
+              <button onClick={onCancel} className="btn-ghost !py-2.5 !px-5 !text-xs">
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p
+              className="text-[0.72rem] uppercase tracking-[0.22em] mb-3"
+              style={{ color: "var(--aurora-pink)" }}
+            >
+              This cannot be undone
+            </p>
+
+            <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-tertiary)" }}>
+              <span style={{ color: "var(--text-secondary)" }}>{name}</span>{" "}
+              {card.cardId ? `(Card ID: #${card.cardId})` : null} leaves Gachard for good.
+            </p>
+
+            <p
+              className="text-[0.6rem] uppercase tracking-[0.14em] mb-1.5"
+              style={{ color: "var(--text-tertiary)" }}
+            >
+              Read the destination once more
+            </p>
+            <p
+              className="card-surface px-3 py-2.5 text-[0.75rem] font-mono break-all mb-5"
+              style={{ color: "var(--text-secondary)" }}
+              data-testid="transfer-confirm-address"
+            >
+              {trimmed}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => onConfirm(trimmed)}
+                disabled={busy}
+                className="flex-1 py-2.5 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
+                style={{
+                  background: "rgba(255,107,186,0.14)",
+                  border: "1px solid rgba(255,107,186,0.45)",
+                  color: "var(--aurora-pink)",
+                }}
+                data-testid="transfer-confirm-btn"
+              >
+                {busy ? "Transferring…" : "Transfer permanently"}
+              </button>
+              <button
+                onClick={() => setStep("address")}
+                disabled={busy}
+                className="btn-ghost !py-2.5 !px-5 !text-xs disabled:opacity-50"
+                data-testid="transfer-back-btn"
+              >
+                Back
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>,
     document.body
