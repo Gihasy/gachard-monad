@@ -275,3 +275,30 @@ Four properties make the result auditable:
 **Operational hazard, the Monad RPC "could not coalesce error"**: seen three times during testing, and the transaction had landed every time; only the client-side response parsing failed. Blind retry around a write would therefore execute it twice. Existing code is safe because `withRetry()` wraps reads only, but every new write path must check on-chain state before retrying rather than retrying on the error alone.
 
 **Known limitation**: a card sitting in a user's Privy wallet cannot be listed, printed, dismantled or redeemed until it is imported back. This is inherent, not a defect: the platform does not hold it. `wallets().list()` also returns HTTP 500 against this account, so wallet ids are read from MongoDB rather than from Privy.
+
+## ADR-032: One Identity, the Signed Session Cookie
+
+**Status**: Accepted, 22 September 2026
+**Note**: no ADR ever recorded how sessions work in this app. The cookie, the HMAC, the client-written fallback and the two different gates all arrived without one, which is part of why the gap survived as long as it did. This ADR states the mechanism as well as the change.
+
+**Decision**: a request is authenticated by the signed `gachard_session` cookie and by nothing else. `getAuthenticatedUser()` has no fallback. The middleware verifies the same HMAC for protected pages that it already verified for APIs. Logging out is a server round trip. Public endpoints do not emit user identifiers.
+
+**Reason**: the previous arrangement was not a weak check, it was an open door, and it is worth recording exactly how the pieces combined — no single one of them looks alarming on its own.
+
+`getAuthenticatedUser()` accepted a bare `gachard_uid` cookie and looked the user up by it, commented as a fallback for "pre-session-auth users". That cookie was written by client script in `app/login/page.tsx` and carried no signature. The middleware accepted it too, for APIs and for pages. So setting one cookie to a user's MongoDB ObjectId made you that user completely: read their collection, spend their credits, list or dismantle their cards, move cards to a Privy wallet. Not a shell, not a stale view — full authority.
+
+The ids were not secret. `GET /api/marketplace/listings` is in `PUBLIC_API` and returned `{ ...listing }` with nothing removed, and a listing document carries `sellerId`, which is `user._id.toString()`. Anyone could open the marketplace unauthenticated, read a seller's id, set a cookie, and be them. The attack needed no credentials, no interception and no guessing.
+
+**Verified before and after**, against a throwaway user, not by reading the code: with only `gachard_uid` set, `/api/cards` returned the full collection and `/api/user/advanced` returned the account's settings. After the change both return 401, a forged signature returns 401, protected pages redirect, and a genuine session still works.
+
+**Two consequences that had to be fixed in the same change, because the first one broke logout and the second one was the leak itself:**
+
+**Logging out never ended the session.** `handleLogout` cleared localStorage and the uid cookie, which was enough only because pages were gated on that cookie. `gachard_session` is httpOnly by design, so script cannot clear it; the browser stayed authenticated to every API after "Log out". This was already true before this ADR — tightening the page gate merely made it visible. `POST /api/auth/logout` now expires both cookies server-side.
+
+**Public responses stop carrying identifiers.** `sellerId`, `sellerWalletAddress` and the raw `_id` are removed from the listings response. The UI only ever needed "is this listing mine", so the server computes an `isOwn` boolean instead; the seller's id never reaches the browser. The wallet address is a separate harm and would be worth removing even without the takeover: ADR-002 says a user never sees a wallet address, and publishing the seller's lets anyone read that person's entire on-chain collection starting from a listing.
+
+**The rule this leaves**: a public endpoint returns a document only through an explicit field list or an explicit removal. `{ ...doc }` from a collection is how this happened, and it will be how it happens again.
+
+**Consequence, migration**: none for current users. Both Google (`api/auth/google`) and demo (`api/auth/demo`) login already issued the signed httpOnly cookie, so the fallback was serving nobody. A browser carrying only the uid cookie is asked to sign in again.
+
+**Consequence, one mechanism to reason about**: pages and APIs are now gated identically. The earlier split — signed token for APIs, cookie presence for pages — is the kind of asymmetry that reads as deliberate and is easy to extend wrongly. Any page that renders server-side data now sits behind the same verification the data does.
