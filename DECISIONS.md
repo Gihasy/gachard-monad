@@ -282,7 +282,7 @@ Four properties make the result auditable:
 
 ## ADR-032: One Identity, the Signed Session Cookie
 
-**Status**: Accepted, 22 September 2026
+**Status**: Accepted, 22 September 2026, **file renamed 23 September 2026** (see the note at the end; the decision is unchanged)
 **Note**: no ADR ever recorded how sessions work in this app. The cookie, the HMAC, the client-written fallback and the two different gates all arrived without one, which is part of why the gap survived as long as it did. This ADR states the mechanism as well as the change.
 
 **Decision**: a request is authenticated by the signed `gachard_session` cookie and by nothing else. `getAuthenticatedUser()` has no fallback. The middleware verifies the same HMAC for protected pages that it already verified for APIs. Logging out is a server round trip. Public endpoints do not emit user identifiers.
@@ -306,3 +306,11 @@ The ids were not secret. `GET /api/marketplace/listings` is in `PUBLIC_API` and 
 **Consequence, migration**: none for current users. Both Google (`api/auth/google`) and demo (`api/auth/demo`) login already issued the signed httpOnly cookie, so the fallback was serving nobody. A browser carrying only the uid cookie is asked to sign in again.
 
 **Consequence, one mechanism to reason about**: pages and APIs are now gated identically. The earlier split — signed token for APIs, cookie presence for pages — is the kind of asymmetry that reads as deliberate and is easy to extend wrongly. Any page that renders server-side data now sits behind the same verification the data does.
+
+**Note, 23 September 2026: the gate moved from `middleware.ts` to `proxy.ts`.**
+
+Next 16 deprecated the `middleware` file convention and renamed it to `proxy`, and the build said so on every deploy. The file was renamed and the exported function with it; `config.matcher` is untouched. Nothing above changes — this is the same gate under the name the framework now uses, and everything this ADR says about it still holds.
+
+One thing is genuinely different, and it is a constraint on whatever is added next: a proxy always runs on the **Node.js runtime**, and setting the `runtime` config option in that file throws. The old file ran on Edge, which is why the HMAC is verified with Web Crypto and the Basic header decoded with `atob` rather than `Buffer`. Both work on Node, so nothing needed rewriting, but the Edge constraint that shaped this code is no longer the reason it looks the way it does.
+
+Verified after the rename, not assumed: all 46 checks in `scripts/suite-api.ts` pass, the three admin tiers still answer 200 / 401 / 401 as before, and `POST /api/admin/unlock` still reaches its own handler rather than being refused by the gate — without that exemption nothing could ever be unlocked.

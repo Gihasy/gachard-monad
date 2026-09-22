@@ -10,9 +10,10 @@
  * dialog, so the prompt appears next to the thing being unlocked instead of
  * over a page that is mostly public.
  *
- * The cookie it mints is verified by the middleware on the Edge runtime, so
- * the format has to match byte for byte: `<unix seconds>.<hex HMAC of
- * "admin.<unix seconds>">`. Node's createHmac and Web Crypto agree on that.
+ * The cookie it mints is verified in `proxy.ts`, so the format has to match
+ * byte for byte: `<unix seconds>.<hex HMAC of "admin.<unix seconds>">`.
+ * Node's createHmac and Web Crypto agree on that, which is what made the
+ * format survive the proxy moving off the Edge runtime.
  */
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";

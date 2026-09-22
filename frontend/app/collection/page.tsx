@@ -37,7 +37,7 @@ export default function Koleksi() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>("all");
 
-  // Mount-only: hydrate session + trigger the middleware fallback if the
+  // Mount-only: hydrate session + trigger the proxy fallback if the
   // client happens to be reached without the cookie somehow. React setters
   // are stable and don't need to be in deps.
   useEffect(() => {

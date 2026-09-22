@@ -1,3 +1,12 @@
+/**
+ * The single auth gate, in front of every route the matcher at the foot names.
+ *
+ * This was `middleware.ts` until Next 16 deprecated that convention and
+ * renamed it to `proxy`. The rename is not cosmetic: a proxy always runs on
+ * the Node.js runtime, and setting the `runtime` config option in this file
+ * throws. Nothing here needed rewriting for that — `atob` and Web Crypto are
+ * both available in Node — but anything added later can no longer assume Edge.
+ */
 import { NextResponse, type NextRequest } from "next/server";
 
 const SESSION_COOKIE_NAME = "gachard_session";
@@ -36,7 +45,10 @@ function isPublicApi(pathname: string): boolean {
   return PUBLIC_API.some((p) => pathname.startsWith(p));
 }
 
-// Constant-time string comparison (safe for Edge Runtime)
+// Constant-time string comparison. Hand-rolled rather than `timingSafeEqual`
+// because this file was on the Edge runtime, where node:crypto was not
+// available. It runs on Node now, but the implementation is correct and
+// dependency-free, so there is nothing to gain by swapping it.
 function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let result = 0;
@@ -115,7 +127,7 @@ async function verifySessionTokenEdge(token: string): Promise<boolean> {
  * credentials per path subtree, and /admin and /api/admin are siblings rather
  * than nested — so the page would authenticate and then its own fetches would
  * be refused. Passing Basic gets a short-lived signed cookie instead, which is
- * sent with every same-origin request regardless of path, and the middleware
+ * sent with every same-origin request regardless of path, and the proxy
  * accepts either.
  *
  * Eight hours, not thirty days: this is a workbench, not a login.
@@ -178,7 +190,7 @@ function adminLocked() {
   );
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // The admin console stays public, deliberately. A judge should be able to
