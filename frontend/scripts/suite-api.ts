@@ -38,6 +38,7 @@ function group(title: string) { results.push(`\n${title}`); }
     await import("../lib/export-intent");
   const { checkRateLimit } = await import("../lib/rate-limit");
   const { reconcileExportedCards, reconcileStuckTransfers } = await import("../lib/privy-reconcile");
+  const { parseScannedCode } = await import("../lib/scan-code");
 
   const client = new MongoClient(process.env.MONGODB_URL!);
   await client.connect();
@@ -244,6 +245,23 @@ function group(title: string) { results.push(`\n${title}`); }
   // ================= J. removed surfaces =================
   group("J. Removed surfaces");
   check("the advanced-access endpoint is gone", (await get("/api/user/advanced", session)).status === 404);
+
+  // ================= K. scanned QR payloads =================
+  // Both QR codes hold a URL, not an id. Claim Shipping compared the whole URL
+  // against a bare claimId and refused every card; these are the shapes a
+  // scanner actually produces.
+  group("K. Scanned QR payloads");
+  const ORIGIN = "https://gachard-monad.vercel.app";
+  const sc = (t: string) => parseScannedCode(t);
+  check("a claim QR yields its claimId", sc(`${ORIGIN}/scan?claimId=1fa28e07`).claimId === "1fa28e07");
+  check("a card QR yields its cardId", sc(`${ORIGIN}/scan?cardId=092ba`).cardId === "092ba");
+  check("a claim QR is not mistaken for a card", sc(`${ORIGIN}/scan?claimId=1fa28e07`).cardId === null);
+  check("surrounding whitespace is ignored", sc(` ${ORIGIN}/scan?claimId=1fa28e07 `).claimId === "1fa28e07");
+  check("extra query params do not break it", sc(`${ORIGIN}/scan?claimId=1fa28e07&utm=x`).claimId === "1fa28e07");
+  check("a bare claimId still works", sc("1fa28e07").claimId === "1fa28e07");
+  check("a bare 5-char cardId is a card, not a claim", sc("092ba").claimId === null && sc("092ba").cardId === "092ba");
+  check("one of our URLs carrying no code yields nothing", sc(`${ORIGIN}/scan`).claimId === null && sc(`${ORIGIN}/scan`).cardId === null);
+  check("someone else's QR yields nothing", sc("https://example.com/hello").cardId === null);
 
   // ---- cleanup ----
   await db.collection("cards").deleteMany({ ownerAddress: OWNER });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense, useCallback } from "react";
+import { parseScannedCode } from "@/lib/scan-code";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -56,27 +57,22 @@ function ScanContent() {
   const [retryLoading, setRetryLoading] = useState(false);
   const [claimResult, setClaimResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  /**
+   * The URL branch here only ever looked for `cardId`, so a claim QR — which
+   * is a URL too — fell through to the bare-id check, failed it because a URL
+   * is longer than eight characters, and was pushed through as a cardId. The
+   * hex test underneath was wrong in its own right: a five-character cardId
+   * also satisfies "eight or fewer hex characters", so a bare card code was
+   * read as a claim.
+   */
   const handleScan = useCallback(
-    (scannedId: string) => {
+    (scanned: string) => {
       setShowScanner(false);
-      // If the scanned content is a URL, extract the cardId from it
-      try {
-        if (scannedId.startsWith("http")) {
-          const url = new URL(scannedId);
-          const cid = url.searchParams.get("cardId");
-          if (cid) {
-            router.push(`/scan?cardId=${cid}`);
-            return;
-          }
-        }
-      } catch {
-        // Not a URL, continue with hex check
-      }
-      // Check if it's a claim QR (short hex) or card QR (5-char hex)
-      if (scannedId.length <= 8 && /^[a-f0-9]+$/i.test(scannedId)) {
-        router.push(`/scan?claimId=${scannedId}`);
-      } else {
-        router.push(`/scan?cardId=${scannedId}`);
+      const { claimId: scannedClaimId, cardId: scannedCardId } = parseScannedCode(scanned);
+      if (scannedClaimId) {
+        router.push(`/scan?claimId=${scannedClaimId}`);
+      } else if (scannedCardId) {
+        router.push(`/scan?cardId=${scannedCardId}`);
       }
     },
     [router]

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { parseScannedCode } from "@/lib/scan-code";
 import Link from "next/link";
 import Image from "next/image";
 import QRScanner from "./QRScanner";
@@ -109,8 +110,21 @@ export default function CardItem({
     setFormError(null);
   };
 
-  const handleClaimScan = async (scannedClaimId: string) => {
+  /**
+   * The scanner hands over whatever the QR literally contains, and a claim QR
+   * contains a URL — so this used to compare
+   * "https://…/scan?claimId=1fa28e07" against "1fa28e07" and refuse every
+   * card, with a message blaming the card rather than the comparison.
+   */
+  const handleClaimScan = async (scanned: string) => {
     setShowClaimScanner(false);
+
+    const { claimId: scannedClaimId } = parseScannedCode(scanned);
+
+    if (!scannedClaimId) {
+      setClaimError("That is not a Claim Shipping QR. Scan the code on the package.");
+      return;
+    }
     if (scannedClaimId !== claimId) {
       setClaimError("QR code does not match this card. Please scan the correct Claim Shipping QR.");
       return;
