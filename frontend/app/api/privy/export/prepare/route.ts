@@ -7,6 +7,11 @@
  * transfer is the step before it: the user has already signed an EIP-712 intent
  * with their own Privy wallet, which is verified here.
  *
+ * One card per request, still. The signature may authorise a batch, but ADR-018
+ * caps a function at 10 seconds and several sponsored transfers would not fit,
+ * so the client calls this once per card with the same signature. Each call
+ * verifies the whole batch intent and then checks that this card is in it.
+ *
  * No retry anywhere in this route. The Monad RPC reports "could not coalesce
  * error" on transactions that actually landed, so resending on error would
  * transfer the card twice.
@@ -17,7 +22,12 @@ import { getAuthenticatedUser } from "@/lib/session";
 import { marketplaceTransfer, resetNonceCache } from "@/lib/blockchain";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isSponsorshipConfigured, needsDelegation, resolveWallet } from "@/lib/privy-server";
-import { recoverExportIntentSigner, type ExportIntent } from "@/lib/export-intent";
+import {
+  batchNonceKey,
+  MAX_EXPORT_BATCH,
+  recoverExportBatchSigner,
+  type ExportBatchIntent,
+} from "@/lib/export-intent";
 import { ethers } from "ethers";
 
 export const maxDuration = 15;
@@ -30,15 +40,7 @@ export async function POST(request: Request) {
     }
     const userId = user._id.toString();
 
-    const rate = await checkRateLimit(userId, "privy_export");
-    if (!rate.allowed) {
-      return NextResponse.json(
-        { error: "Too many export attempts. Try again in a minute." },
-        { status: 429 }
-      );
-    }
-
-    const { cardId, tokenId, signature, nonce, deadline } = await request.json();
+    const { cardId, tokenId, tokenIds, signature, nonce, deadline } = await request.json();
     if (!signature || !nonce || !deadline) {
       return NextResponse.json(
         { error: "signature, nonce and deadline are required" },
@@ -47,6 +49,15 @@ export async function POST(request: Request) {
     }
     if (!cardId && tokenId === undefined) {
       return NextResponse.json({ error: "cardId (or tokenId) is required" }, { status: 400 });
+    }
+    if (!Array.isArray(tokenIds) || tokenIds.length === 0) {
+      return NextResponse.json({ error: "tokenIds is required" }, { status: 400 });
+    }
+    if (tokenIds.length > MAX_EXPORT_BATCH) {
+      return NextResponse.json(
+        { error: `A signature can cover at most ${MAX_EXPORT_BATCH} cards.` },
+        { status: 400 }
+      );
     }
 
     if (!isSponsorshipConfigured()) {
@@ -107,32 +118,82 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Signature expired. Please try again." }, { status: 400 });
     }
 
-    const intent: ExportIntent = {
-      tokenId: Number(card.tokenId),
+    // Verify against the array exactly as sent. It does not need to be
+    // trusted: a reordered or padded array produces a different digest and
+    // fails recovery here.
+    const intent: ExportBatchIntent = {
+      tokenIds: tokenIds.map(Number),
       to: ethers.getAddress(privyAddress),
       userId,
       nonce: String(nonce),
       deadline: Number(deadline),
     };
-    const signer = recoverExportIntentSigner(intent, signature);
+    const signer = recoverExportBatchSigner(intent, signature);
     if (!signer || signer.toLowerCase() !== privyAddress.toLowerCase()) {
       return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
     }
 
-    // Claim the nonce by inserting it. The unique index makes this the atomic
-    // step: a duplicate key means the signature was already spent, so a replay
-    // loses the race rather than being waved through by a read-then-write gap.
+    // The signature authorises a specific set. Without this check a valid
+    // signature for one selection would move any card the user owns, because
+    // everything above only proves the signature itself is genuine.
+    const thisToken = Number(card.tokenId);
+    if (!intent.tokenIds.includes(thisToken)) {
+      return NextResponse.json(
+        { error: "That card is not covered by this signature." },
+        { status: 400 }
+      );
+    }
+
+    // Claim the nonce for THIS card. The unique index makes this the atomic
+    // step: a duplicate key means this card was already exported under this
+    // signature, so a replay loses the race rather than being waved through by
+    // a read-then-write gap. The key is scoped by token id because one
+    // signature legitimately covers several cards.
     const noncesCollection = await getCollection("privy_nonces");
     try {
       await noncesCollection.insertOne({
-        nonce: intent.nonce,
+        nonce: batchNonceKey(intent.nonce, thisToken),
+        batchNonce: intent.nonce,
         userId,
         cardId: card.cardId ?? card._id.toString(),
-        tokenId: intent.tokenId,
+        tokenId: thisToken,
         usedAt: new Date().toISOString(),
       });
     } catch {
       return NextResponse.json({ error: "This signature was already used." }, { status: 409 });
+    }
+
+    // Rate limit the signature, not the card.
+    //
+    // The limit is five attempts a minute (ADR-006/ADR-019), and a batch of
+    // ten cards is ten requests, so counting per card would reject the user's
+    // own selection halfway through. One act of consent is one attempt. The
+    // bare nonce doubles as the "already counted" marker: the same unique
+    // index means only the first card of a batch inserts it.
+    let countsAsNewBatch = true;
+    try {
+      await noncesCollection.insertOne({
+        nonce: intent.nonce,
+        batchMarker: true,
+        userId,
+        usedAt: new Date().toISOString(),
+      });
+    } catch {
+      countsAsNewBatch = false;
+    }
+    if (countsAsNewBatch) {
+      const rate = await checkRateLimit(userId, "privy_export");
+      if (!rate.allowed) {
+        // Drop both claims so the user can retry once the window rolls over,
+        // rather than burning the signature on a rejection.
+        await noncesCollection.deleteMany({
+          nonce: { $in: [intent.nonce, batchNonceKey(intent.nonce, thisToken)] },
+        });
+        return NextResponse.json(
+          { error: "Too many export attempts. Try again in a minute." },
+          { status: 429 }
+        );
+      }
     }
 
     // Refuse to send the card anywhere Privy cannot sign from.
@@ -188,7 +249,7 @@ export async function POST(request: Request) {
     // again instead, which costs one modal and cannot double-spend.
     let txHash: string;
     try {
-      txHash = await marketplaceTransfer(intent.tokenId, user.walletAddress, intent.to);
+      txHash = await marketplaceTransfer(thisToken, user.walletAddress, intent.to);
     } catch (err) {
       const code = (err as { code?: string })?.code;
       if (code === "NONCE_EXPIRED" || code === "REPLACEMENT_UNDERPRICED") {
@@ -196,7 +257,7 @@ export async function POST(request: Request) {
         // behind. Invalidate so the next attempt re-reads it, but do not retry
         // here: this transfer may have landed despite the error.
         resetNonceCache();
-        console.warn(`[privy/export/prepare] nonce conflict for token ${intent.tokenId}, cache reset`);
+        console.warn(`[privy/export/prepare] nonce conflict for token ${thisToken}, cache reset`);
         return NextResponse.json(
           {
             error: "The network was busy. Please try exporting again.",
@@ -212,8 +273,8 @@ export async function POST(request: Request) {
     const tx = await txCollection.insertOne({
       userId,
       type: "privy_export",
-      tokenId: intent.tokenId,
-      tokenIds: [intent.tokenId],
+      tokenId: thisToken,
+      tokenIds: [thisToken],
       rarity: card.rarity ?? 0,
       templateIds: [card.templateId],
       txHash,
@@ -241,7 +302,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      tokenId: intent.tokenId,
+      tokenId: thisToken,
       txHash,
       txId: tx.insertedId.toString(),
       to: intent.to,

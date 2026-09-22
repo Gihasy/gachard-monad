@@ -23,7 +23,8 @@ import {
 } from "@privy-io/react-auth";
 import {
   buildExportIntentDomain,
-  EXPORT_INTENT_SIGNING_TYPES,
+  EXPORT_BATCH_SIGNING_TYPES,
+  MAX_EXPORT_BATCH,
 } from "@/lib/export-intent";
 import { privyConfig } from "@/lib/privy-config";
 import {
@@ -180,12 +181,17 @@ function Workspace() {
   }, []);
 
   /**
-   * Move the chosen cards, one at a time.
+   * Move the chosen cards.
    *
-   * Sequential on purpose. Each card needs its own signature and Privy shows
-   * one prompt at a time, and running them together would race the server's
-   * nonce handling. A failure stops the run rather than pressing on, so the
-   * count reported back is always the count that actually moved.
+   * One signature for the whole selection, then one request per card. The
+   * signature used to be per card, which meant a Privy dialog for each one --
+   * five cards, five modals, and a user clicking through them without reading
+   * any. The requests stay per card because ADR-018 caps a function at ten
+   * seconds and several sponsored transfers would not fit.
+   *
+   * A failure stops the run rather than pressing on, so the count reported
+   * back is always the count that actually moved. The rest of the selection
+   * keeps its signature and is simply not used; nothing is left half-signed.
    */
   const move = useCallback(async () => {
     const chosen = movable.filter((c) => selected.has(c.cardId!));
@@ -194,42 +200,65 @@ function Workspace() {
       setErr("Please sign in again.");
       return;
     }
+    if (chosen.length > MAX_EXPORT_BATCH) {
+      setErr(`You can move up to ${MAX_EXPORT_BATCH} cards at once.`);
+      return;
+    }
 
     setBusy(true);
     setErr(null);
     setNote(null);
+
+    // Order is part of the signed struct, so the array sent to the server has
+    // to be the one that was signed, element for element.
+    const tokenIds = chosen.map((c) => Number(c.tokenId));
+    const nonce = crypto.randomUUID();
+    const deadline = Math.floor(Date.now() / 1000) + 600;
+
+    let signature: string;
+    try {
+      setProgress(
+        chosen.length === 1
+          ? "Confirm the signature…"
+          : `Confirm one signature for ${chosen.length} cards…`
+      );
+      // uint256 values go as strings: the digest is identical either way, and
+      // this is the shape already proven against Privy's eth_signTypedData_v4.
+      // v3 resolves to { signature }, not the string.
+      const res = await signTypedData({
+        domain: buildExportIntentDomain(),
+        types: EXPORT_BATCH_SIGNING_TYPES as unknown as Record<
+          string,
+          { name: string; type: string }[]
+        >,
+        primaryType: "ExportBatch",
+        message: {
+          tokenIds: tokenIds.map(String),
+          to: address,
+          userId,
+          nonce,
+          deadline: String(deadline),
+        },
+      });
+      signature = res.signature;
+    } catch (e) {
+      setBusy(false);
+      setProgress(null);
+      // Dismissing the dialog is a choice, not a fault. Nothing has moved.
+      setErr(e instanceof Error && /reject|denied|cancel/i.test(e.message)
+        ? null
+        : "Could not get your signature. Please try again.");
+      return;
+    }
+
     let moved = 0;
-
     for (const [i, card] of chosen.entries()) {
-      setProgress(`Card ${i + 1} of ${chosen.length} — confirm the signature…`);
+      setProgress(`Moving card ${i + 1} of ${chosen.length}…`);
       try {
-        const nonce = crypto.randomUUID();
-        const deadline = Math.floor(Date.now() / 1000) + 600;
-
-        // uint256 values go as strings: the digest is identical either way,
-        // and this is the shape already proven against Privy's
-        // eth_signTypedData_v4. v3 resolves to { signature }, not the string.
-        const { signature } = await signTypedData({
-          domain: buildExportIntentDomain(),
-          types: EXPORT_INTENT_SIGNING_TYPES as unknown as Record<
-            string,
-            { name: string; type: string }[]
-          >,
-          primaryType: "ExportIntent",
-          message: {
-            tokenId: String(card.tokenId),
-            to: address,
-            userId,
-            nonce,
-            deadline: String(deadline),
-          },
-        });
-
-        setProgress(`Card ${i + 1} of ${chosen.length} — moving…`);
         const prep = await fetch("/api/privy/export/prepare", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ cardId: card.cardId, signature, nonce, deadline }),
+          body: JSON.stringify({ cardId: card.cardId, tokenIds, signature, nonce, deadline }),
         });
         const prepBody = await prep.json().catch(() => null);
         if (!prep.ok) throw new Error(prepBody?.error ?? "Could not move that card.");
@@ -258,9 +287,7 @@ function Workspace() {
     setBusy(false);
     setProgress(null);
     setSelected(new Set());
-    if (moved > 0) {
-      setNote(`${moved} card${moved === 1 ? "" : "s"} moved to your wallet.`);
-    }
+    if (moved > 0) setNote(`${moved} card${moved === 1 ? "" : "s"} moved to your wallet.`);
     await load();
   }, [movable, selected, address, userId, signTypedData, poll, load]);
 
@@ -432,7 +459,7 @@ function Workspace() {
               {progress ??
                 (selected.size === 0
                   ? "Pick the cards you want to hold yourself."
-                  : "You will be asked to sign once per card.")}
+                  : "You will be asked to sign once, for all of them.")}
             </p>
             <div className="flex items-center gap-2">
               {selected.size > 0 && !busy && (
