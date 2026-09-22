@@ -36,6 +36,7 @@ import { privyConfig } from "@/lib/privy-config";
 import {
   Eyebrow,
   EXPLORER,
+  MAX_RETURN_BATCH,
   RARITY,
   RARITY_COLORS,
   RARITY_GLOW,
@@ -43,10 +44,6 @@ import {
 } from "./shared";
 
 const SIGNER_ID = process.env.NEXT_PUBLIC_PRIVY_SIGNER_ID ?? "";
-
-function busyLabel(a: string) {
-  return a === "return" ? "Returning…" : a === "send" ? "Sending…" : "…";
-}
 
 function Workspace() {
   const { ready, authenticated, login, user } = usePrivy();
@@ -60,6 +57,8 @@ function Workspace() {
   const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [sendTo, setSendTo] = useState<Record<string, string>>({});
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [returnNote, setReturnNote] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
@@ -151,6 +150,60 @@ function Workspace() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+  /**
+   * Return the selected cards, one request each.
+   *
+   * No signature here, unlike moving out: the wallet already delegated to
+   * Gachard, which is what lets the server send on the user's behalf. So a
+   * batch needs no batched signature — only a selection.
+   *
+   * Sequential, and it stops at the first failure so the count reported back
+   * is the count that actually returned. Privy's sponsorship settles
+   * asynchronously, so /api/cards is re-read once at the end rather than after
+   * every card.
+   */
+  const returnSelected = useCallback(async () => {
+    const chosen = cards.filter((c) => picked.has(c.cardId ?? String(c.tokenId)));
+    if (chosen.length === 0) return;
+
+    setBusy("return-batch");
+    setErr(null);
+    setNote(null);
+    let done = 0;
+
+    for (const [i, card] of chosen.entries()) {
+      setReturnNote(`Returning card ${i + 1} of ${chosen.length}…`);
+      try {
+        const res = await fetch("/api/privy/import", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ cardId: card.cardId }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error ?? "That did not work.");
+        done++;
+      } catch (e) {
+        const why = e instanceof Error ? e.message : "Something went wrong.";
+        setErr(
+          done > 0
+            ? `${why} ${done} card${done === 1 ? "" : "s"} returned before this one.`
+            : why
+        );
+        break;
+      }
+    }
+
+    setBusy(null);
+    setReturnNote(null);
+    setPicked(new Set());
+    if (done > 0) {
+      setNote(
+        `${done} card${done === 1 ? "" : "s"} on the way back to your collection.`
+      );
+    }
+    await load();
+  }, [cards, picked, load]);
 
   if (!ready) {
     return (
@@ -306,7 +359,9 @@ function Workspace() {
               <span className="flex items-center gap-3">
                 {cards.length > 0 && (
                   <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
-                    {cards.length} {cards.length === 1 ? "card" : "cards"}
+                    {picked.size > 0
+                      ? `${picked.size} of ${cards.length} selected`
+                      : `${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
                   </span>
                 )}
                 {/* Always offered, even with the switch off: /wallet/move says
@@ -345,12 +400,39 @@ function Workspace() {
               <ul className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
                 {cards.map((c) => {
                   const id = c.cardId ?? String(c.tokenId);
+                  const on = picked.has(id);
                   const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
                   const addr = (sendTo[id] ?? "").trim();
                   return (
-                    <li key={id} className="card-surface glass-hover p-3 flex flex-col">
+                    <li
+                      key={id}
+                      className="card-surface glass-hover p-3 flex flex-col transition-all"
+                      style={{
+                        borderColor: on ? "var(--electric-blue)" : undefined,
+                        background: on ? "rgba(0,204,255,0.07)" : undefined,
+                      }}
+                    >
+                      {/* Only the card itself selects. The send-away field
+                          below needs its own clicks. */}
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={on}
+                        aria-label={`Select ${c.templateName ?? `card ${c.tokenId}`}`}
+                        disabled={busy !== null}
+                        onClick={() =>
+                          setPicked((s) => {
+                            const next = new Set(s);
+                            if (next.has(id)) next.delete(id);
+                            else next.add(id);
+                            return next;
+                          })
+                        }
+                        className="text-left w-full disabled:opacity-50"
+                        data-testid={`wallet-pick-${c.tokenId}`}
+                      >
                       <div
-                        className={`relative w-full rounded-xl overflow-hidden mb-3 bg-white/5 ${RARITY_GLOW[c.rarity] ?? ""}`}
+                        className={`relative w-full rounded-xl overflow-hidden mb-3 bg-white/5 ${on ? RARITY_GLOW[c.rarity] ?? "" : ""}`}
                         style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
                         data-testid={`wallet-card-visual-${c.tokenId}`}
                       >
@@ -361,6 +443,7 @@ function Workspace() {
                             fill
                             sizes="(max-width:640px) 45vw, 20vw"
                             className="object-contain"
+                            style={{ opacity: on ? 1 : 0.78 }}
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
@@ -369,6 +452,18 @@ function Workspace() {
                             </span>
                           </div>
                         )}
+                        <span
+                          className="absolute top-2 right-2 flex items-center justify-center rounded-md text-[0.7rem] font-semibold"
+                          style={{
+                            width: 20,
+                            height: 20,
+                            background: on ? "var(--electric-blue)" : "rgba(0,0,0,0.45)",
+                            border: `1px solid ${on ? "var(--electric-blue)" : "var(--border-strong)"}`,
+                            color: on ? "#0B0E1A" : "transparent",
+                          }}
+                        >
+                          ✓
+                        </span>
                       </div>
 
                       <p
@@ -378,25 +473,11 @@ function Workspace() {
                         {c.templateName ?? `Card #${c.tokenId}`}
                       </p>
                       <p
-                        className="text-[0.6rem] uppercase tracking-[0.12em] mb-3"
+                        className="text-[0.6rem] uppercase tracking-[0.12em]"
                         style={{ color: colour }}
                       >
                         {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
                       </p>
-
-                      <button
-                        onClick={() =>
-                          act(
-                            `return-${id}`,
-                            post("/api/privy/import", { cardId: c.cardId }),
-                            "On its way back to your collection."
-                          )
-                        }
-                        disabled={busy !== null}
-                        className="btn-ghost !py-2 !px-2 !text-[0.62rem] w-full disabled:opacity-50"
-                        data-testid={`wallet-return-${c.tokenId}`}
-                      >
-                        {busy === `return-${id}` ? busyLabel("return") : "Return to Gachard"}
                       </button>
 
                       {/* Irreversible, so it is set apart by a rule rather than
@@ -429,13 +510,49 @@ function Workspace() {
                           }}
                           data-testid={`wallet-send-${c.tokenId}`}
                         >
-                          {busy === `send-${id}` ? busyLabel("send") : "Send away"}
+                          {busy === `send-${id}` ? "Sending…" : "Send away"}
                         </button>
                       </div>
                     </li>
                   );
                 })}
               </ul>
+              <div
+                className="sticky bottom-4 glass mt-4 px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+                data-testid="wallet-return-bar"
+              >
+                <p className="text-[0.7rem]" style={{ color: "var(--text-tertiary)" }}>
+                  {returnNote ??
+                    (picked.size === 0
+                      ? "Pick the cards you want back in your collection."
+                      : picked.size > MAX_RETURN_BATCH
+                        ? `Up to ${MAX_RETURN_BATCH} at a time.`
+                        : "They become printable, listable and tradable again.")}
+                </p>
+                <div className="flex items-center gap-2">
+                  {picked.size > 0 && busy === null && (
+                    <button
+                      onClick={() => setPicked(new Set())}
+                      className="btn-ghost !py-2 !px-3 !text-[0.65rem]"
+                      data-testid="wallet-return-clear"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <button
+                    onClick={returnSelected}
+                    disabled={picked.size === 0 || picked.size > MAX_RETURN_BATCH || busy !== null}
+                    className="btn-primary !py-2 !px-5 !text-[0.68rem] disabled:opacity-40"
+                    data-testid="wallet-return-selected"
+                  >
+                    {busy === "return-batch"
+                      ? "Returning…"
+                      : picked.size === 0
+                        ? "Return to Gachard"
+                        : `Return ${picked.size} ${picked.size === 1 ? "card" : "cards"}`}
+                  </button>
+                </div>
+              </div>
               <p className="text-[0.65rem] mt-3" style={{ color: "var(--text-tertiary)" }}>
                 Sending a card elsewhere is permanent. Gachard cannot bring it back.
               </p>

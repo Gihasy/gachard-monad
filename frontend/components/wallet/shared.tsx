@@ -31,6 +31,16 @@ export const RARITY_GLOW = ["", "glow-rare", "glow-epic", "glow-legendary"];
 
 export const EXPLORER = "https://testnet.monadvision.com/address/";
 
+/**
+ * Cards returnable in one action.
+ *
+ * Matches DAILY_SPONSORED_LIMIT in lib/privy-server, which is the real
+ * ceiling: every return is one sponsored transfer. Offering more than a user
+ * could actually complete would only fail halfway. Kept here rather than
+ * imported because that module pulls in the Privy server client.
+ */
+export const MAX_RETURN_BATCH = 20;
+
 /** Privy's sponsorship lands asynchronously, so a move is confirmed by polling. */
 export const POLL_INTERVAL_MS = 3000;
 export const POLL_MAX_ATTEMPTS = 20;

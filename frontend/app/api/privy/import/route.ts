@@ -18,6 +18,7 @@ import { getBalance } from "@/lib/blockchain";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   consumeSponsorshipBudget,
+  DAILY_SPONSORED_LIMIT,
   isSponsorshipConfigured,
   resolveWalletId,
   sendSponsored,
@@ -38,7 +39,11 @@ export async function POST(request: Request) {
     }
     const userId = user._id.toString();
 
-    const rate = await checkRateLimit(userId, "privy_import");
+    // Returning a selection is one user action spread over one request per
+    // card, so the per-minute ceiling is the batch size rather than ADR-006's
+    // five. The real ceiling is unchanged and sits below: consumeSponsorshipBudget
+    // allows DAILY_SPONSORED_LIMIT sponsored sends per user per day.
+    const rate = await checkRateLimit(userId, "privy_import", DAILY_SPONSORED_LIMIT);
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many import attempts. Try again in a minute." },

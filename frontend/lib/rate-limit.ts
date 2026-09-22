@@ -17,7 +17,20 @@ const MAX_ATTEMPTS_PER_MINUTE = 5; // ADR-006
  */
 export async function checkRateLimit(
   userId: string,
-  action: string
+  action: string,
+  /**
+   * Attempts allowed in the window. Defaults to ADR-006's five, which is the
+   * right ceiling for redeem: one user action is one request.
+   *
+   * It is passed explicitly where one user action is deliberately several
+   * requests. Returning ten cards from the wallet page is ten calls to
+   * /api/privy/import because ADR-018 caps a function at ten seconds, and
+   * counting those as ten attempts would cut a user off midway through their
+   * own selection. Raising it here does not raise what it costs us: sponsored
+   * sends are capped per user per day by DAILY_SPONSORED_LIMIT, which this
+   * does not touch.
+   */
+  max: number = MAX_ATTEMPTS_PER_MINUTE
 ): Promise<{ allowed: boolean; remaining: number }> {
   const collection = await getCollection("rate_limits");
 
@@ -40,10 +53,10 @@ export async function checkRateLimit(
       windowStart,
       count: 1,
     });
-    return { allowed: true, remaining: MAX_ATTEMPTS_PER_MINUTE - 1 };
+    return { allowed: true, remaining: max - 1 };
   }
 
-  if (entry.count >= MAX_ATTEMPTS_PER_MINUTE) {
+  if (entry.count >= max) {
     return { allowed: false, remaining: 0 };
   }
 
