@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import Image from "next/image";
 import QRScanner from "./QRScanner";
 import CardDetailModal from "./CardDetailModal";
@@ -89,7 +90,7 @@ export default function CardItem({
   const [claimError, setClaimError] = useState<string | null>(null);
   const [showClaimScanner, setShowClaimScanner] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(status);
-  const [transferMode, setTransferMode] = useState<"export" | "import" | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [isListed, setIsListed] = useState(initialIsListed || false);
   const [listingId, setListingId] = useState(initialListingId || null);
@@ -354,7 +355,7 @@ export default function CardItem({
             )}
             {canExport && (
               <button
-                onClick={() => setTransferMode("export")}
+                onClick={() => setExporting(true)}
                 className="btn-ghost !py-2 !px-3 !text-[0.65rem] w-full"
                 data-testid={`export-wallet-${tokenId}`}
               >
@@ -362,13 +363,17 @@ export default function CardItem({
               </button>
             )}
             {isExported && (
-              <button
-                onClick={() => setTransferMode("import")}
-                className="btn-ghost !py-2 !px-3 !text-[0.65rem] w-full"
-                data-testid={`import-wallet-${tokenId}`}
+              // Managed on /wallet. A card the platform does not hold has a
+              // different set of actions than one it does, and mixing the two
+              // here is what made the collection page start growing wallet
+              // language (ADR-002).
+              <Link
+                href="/wallet"
+                className="btn-ghost !py-2 !px-3 !text-[0.65rem] w-full text-center"
+                data-testid={`manage-wallet-${tokenId}`}
               >
-                Return to Gachard
-              </button>
+                Manage in Wallet
+              </Link>
             )}
             {!isListed && status === "Digital" && (
               tokenId !== null ? (
@@ -471,16 +476,15 @@ export default function CardItem({
       )}
 
       {/* Move to / return from the user's own wallet (ADR-031) */}
-      {transferMode && cardId && (
+      {exporting && cardId && (
         <PrivyCardTransferModal
           card={{ cardId, tokenId, templateName }}
-          mode={transferMode}
+          mode="export"
           userId={userId}
-          onClose={() => setTransferMode(null)}
+          onClose={() => setExporting(false)}
           onDone={() => {
-            const next = transferMode === "export" ? "In Your Wallet" : "Digital";
-            setCurrentStatus(next);
-            if (tokenId !== null) onStatusChange?.(tokenId, next);
+            setCurrentStatus("In Your Wallet");
+            if (tokenId !== null) onStatusChange?.(tokenId, "In Your Wallet");
           }}
         />
       )}

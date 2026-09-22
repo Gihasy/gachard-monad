@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE_NAME = "gachard_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
-const PROTECTED = ["/collection", "/profile", "/topup"];
+const PROTECTED = ["/collection", "/profile", "/topup", "/wallet"];
 
 // Public API routes that don't require authentication
 const PUBLIC_API = [
@@ -139,6 +139,7 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/collection/:path*",
+    "/wallet/:path*",
     "/profile/:path*",
     "/topup/:path*",
     "/admin/:path*",

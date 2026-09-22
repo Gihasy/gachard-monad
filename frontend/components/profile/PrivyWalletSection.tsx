@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import { monadTestnet } from "@/lib/monad-testnet";
 
@@ -93,6 +94,13 @@ function PrivyWalletContent() {
           <div>
             <p className="text-xs text-white/40 mb-1">Address</p>
             <p className="text-sm text-white/70 font-mono break-all">{wallet.address}</p>
+            <Link
+              href="/wallet"
+              className="btn-ghost !py-2 !px-3 !text-[0.7rem] inline-block mt-2"
+              data-testid="open-wallet-page"
+            >
+              Open wallet →
+            </Link>
           </div>
 
           <div>
