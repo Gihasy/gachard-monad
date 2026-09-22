@@ -26,7 +26,7 @@ That is the default, not the ceiling. A user who wants custody of their own card
 
 ### Advanced Features
 - **Pyth Entropy Integration**: Provably fair pack randomness using on-chain verifiable RNG, replacing Math.random() with cryptographically secure seed generation
-- **Privy Beyond Authentication**: Cards move both ways between Gachard and the user's own Privy wallet. Export is authorised by an EIP-712 intent the user signs with that wallet, one signature covering a whole selection; the return transfer is signed and sent from the user's wallet, and Gachard has no route that could do it without the delegation they grant and can withdraw. Gas on both sponsored steps is paid by Privy's native sponsorship, so the wallet transacts while its MON balance stays at zero. The wallet is bound to the Gachard account permanently and must carry the same email, so a stolen session cannot point it somewhere else
+- **Privy Beyond Authentication**: Cards move both ways between Gachard and the user's own Privy wallet. Export is authorised by an EIP-712 intent the user signs with that wallet, one signature covering a whole selection; the return transfer is signed and sent from the user's wallet, and Gachard has no route that could do it without the delegation they grant and can withdraw. Gas on both sponsored steps is paid by Privy's native sponsorship, so the wallet transacts while its MON balance stays at zero. The wallet is bound to the Gachard account permanently and must carry the same email, so a stolen session cannot point it somewhere else. Two things make the custody real rather than described. A card can leave for an address Gachard has no signing rights over, which is a door out of the product entirely. And when such a card is sent *back* by a transfer Gachard never made, the platform finds it by reading balances on chain — there is no transaction id and no pending row to look it up by, because nothing here performed the transfer. The chain is the record, and Gachard is reading it rather than being it
 - **AI Anomaly Detection**: Wash-trading risk scoring on marketplace trades via MiMo LLM, with the resulting score written on-chain through `recordVerification()`. Requires `MIMO_API_KEY`; without it the call degrades to a neutral score rather than failing the trade
 - **Dismantle & Crystal**: Burn cards to earn Crystal currency
 - **QR Verification**: Scan physical cards for authenticity verification
@@ -41,6 +41,9 @@ That is the default, not the ceiling. A user who wants custody of their own card
 - **Compiler:** Solc 0.8.28 + EVM cancun + via_ir
 - **Verification:** Sourcify exact_match on MonadVision
 - **Tests:** 78/78 passed (Foundry), 58 GachardCard + 20 PackEntropy, covering mint, print, redeem, transfer, burn, verification, access control and the entropy flow
+
+### API and Logic Tests
+`npx tsx frontend/scripts/suite-api.ts` — **68 checks**, all passing, over authentication boundaries, what the public marketplace and public admin endpoints are allowed to return, logout, redeem, the EIP-712 batch signature, rate limits, chain reconciliation, Privy binding, released cards and the payloads a QR scanner actually produces. It builds its own fixture, deletes it, and reports what it left behind.
 
 ### Nonce Manager
 Implemented `acquireNonce()` in `blockchain.ts` with lock mechanism to handle concurrent transactions. This prevents "existing transaction had higher priority" errors when multiple users buy packs simultaneously, a critical feature for real-time TCG gameplay.
@@ -60,9 +63,10 @@ The seed is generated via Pyth's commit-reveal protocol, making it cryptographic
 ### Architecture
 - **Custodial Wallets**: Users never see private keys
 - **Sponsored Gas**: Platform pays all transaction fees
-- **State Machine**: Digital ↔ Vaulted ↔ Exported card status with transfer blocking
+- **State Machine**: Digital ↔ Vaulted ↔ Exported ↔ Released card status with transfer blocking. `Released` means sent to an address outside Gachard; the platform cannot bring it back, and only the chain can say it returned
 - **AES-256-GCM**: Private keys encrypted at rest
 - **One identity**: every request is authenticated by a signed, httpOnly session cookie and nothing else (ADR-032)
+- **Two audiences, one console**: the admin console is readable without an account so the print-to-approval flow can be followed, but its routes withhold the people in that flow — email, recipient name, phone, address and the redeem code are sent only to a signed-in admin. The gate states the result in a request header that is stripped from every incoming request before it is set, so it cannot be forged (ADR-032, second amendment)
 
 ## Why Monad
 
@@ -79,9 +83,9 @@ Stated plainly so nothing here has to be taken on trust:
 | Dismantle → Crystal | Live |
 | Print request → vault lock → redeem | Live end-to-end in software; no physical card has been produced and redeemed yet |
 | AI risk scoring + market insight | Code live and wired; requires `MIMO_API_KEY` to be set in the deployment |
-| Privy self-custody wallet | Live: wallet creation, export, import and outward transfer, both sponsored steps paid by Privy (v3.44.0) |
+| Privy self-custody wallet | Live: wallet creation, export, import and outward transfer, both sponsored steps paid by Privy (v3.44.0). `/wallet` carries the wallet's own ledger — direction and transaction hash per row — and a Refresh that checks the chain rather than re-reading the database |
 | Revealing the wallet's private key | Built and switched off. `useExportWallet` works on v3.44.0, but a revealed key cannot be un-revealed, so it sits behind a deliberate flag |
-| Export/import exercised end to end by a user | Yes, on Monad Testnet. The outward **transfer** path is built and tested at the server and component level but has not yet been run against a real destination |
+| Export/import exercised end to end by a user | Yes, on Monad Testnet, including the outward transfer. One card (`#092ba`, token 272) has now made the whole round trip: printed, shipping claimed, redeemed, exported to the user's Privy wallet (`0x47c56d03…`), transferred out to an address outside Gachard (`0x630d24d5…`), sent back in by a transfer Gachard did not make, detected by reading the chain, and returned to Gachard |
 | AI vision card verification | Not built. QR + on-chain lookup is the only verification today |
 | Gameplay (`/play`) | Not built, marked "Coming Soon" in the app |
 | Payments | Simulated; no processor integrated |
