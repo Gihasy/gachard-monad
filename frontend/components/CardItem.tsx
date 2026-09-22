@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
 import QRScanner from "./QRScanner";
@@ -9,13 +8,6 @@ import CardDetailModal from "./CardDetailModal";
 import ListingModal from "./ListingModal";
 import SellButton from "./SellButton";
 import ProgressIndicator from "./ProgressIndicator";
-
-// Loaded only when the user opens it, and ssr:false, so the Privy SDK never
-// ships with /collection itself. Same pattern as /profile (ADR-028, ADR-031).
-const PrivyCardTransferModal = dynamic(
-  () => import("./collection/PrivyCardTransferModal"),
-  { ssr: false }
-);
 
 const RARITY_COLORS = [
   "var(--rarity-common)",
@@ -42,12 +34,6 @@ interface CardItemProps {
   isListed?: boolean;
   listingId?: string | null;
   listingPrice?: number | null;
-  /**
-   * Whether the owner turned Advanced Access on in their profile. Off by
-   * default: moving a card out starts an irreversible path, so it is offered
-   * only to someone who asked for it (ADR-031).
-   */
-  advancedMode?: boolean;
   onStatusChange?: (tokenId: number, newStatus: string) => void;
 }
 
@@ -85,7 +71,6 @@ export default function CardItem({
   isListed: initialIsListed,
   listingId: initialListingId,
   listingPrice: initialListingPrice,
-  advancedMode = false,
   onStatusChange,
 }: CardItemProps) {
   const [printing, setPrinting] = useState(false);
@@ -97,7 +82,6 @@ export default function CardItem({
   const [claimError, setClaimError] = useState<string | null>(null);
   const [showClaimScanner, setShowClaimScanner] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(status);
-  const [exporting, setExporting] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [isListed, setIsListed] = useState(initialIsListed || false);
   const [listingId, setListingId] = useState(initialListingId || null);
@@ -112,10 +96,6 @@ export default function CardItem({
   const isShipping = currentStatus === "Shipping";
   const isPhysical = currentStatus === "Physical";
   const isExported = currentStatus === "In Your Wallet";
-  // Export is offered on exactly the same footing as Print and Sell: a plain
-  // Digital card the platform still holds.
-  const canExport =
-    advancedMode === true && currentStatus === "Digital" && tokenId !== null && !isListed;
 
   const isFormValid =
     form.recipientName.trim() &&
@@ -361,20 +341,12 @@ export default function CardItem({
             {!isListed && canList && (
               <SellButton onClick={() => setShowListingModal(true)} />
             )}
-            {canExport && (
-              <button
-                onClick={() => setExporting(true)}
-                className="btn-ghost !py-2 !px-3 !text-[0.65rem] w-full"
-                data-testid={`export-wallet-${tokenId}`}
-              >
-                Move to My Wallet
-              </button>
-            )}
             {isExported && (
-              // Managed on /wallet. A card the platform does not hold has a
-              // different set of actions than one it does, and mixing the two
-              // here is what made the collection page start growing wallet
-              // language (ADR-002).
+              // The one wallet word left on this surface, and only on a card
+              // that is already out: without it a card would vanish from the
+              // collection with nothing saying where it went. Everything the
+              // wallet can do, including choosing what to move, lives on
+              // /wallet (ADR-002, ADR-031).
               <Link
                 href="/wallet"
                 className="btn-ghost !py-2 !px-3 !text-[0.65rem] w-full text-center"
@@ -479,20 +451,6 @@ export default function CardItem({
             setListingId(newListingId);
             setListingPrice(price);
             onStatusChange?.(tokenId!, "Digital");
-          }}
-        />
-      )}
-
-      {/* Move to / return from the user's own wallet (ADR-031) */}
-      {exporting && cardId && (
-        <PrivyCardTransferModal
-          card={{ cardId, tokenId, templateName }}
-          mode="export"
-          userId={userId}
-          onClose={() => setExporting(false)}
-          onDone={() => {
-            setCurrentStatus("In Your Wallet");
-            if (tokenId !== null) onStatusChange?.(tokenId, "In Your Wallet");
           }}
         />
       )}

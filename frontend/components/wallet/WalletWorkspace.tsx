@@ -20,18 +20,27 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   getAccessToken,
   PrivyProvider,
   useExportWallet,
   usePrivy,
   useSigners,
+  useSignTypedData,
   useWallets,
 } from "@privy-io/react-auth";
+import {
+  buildExportIntentDomain,
+  EXPORT_INTENT_SIGNING_TYPES,
+} from "@/lib/export-intent";
 import { monadTestnet } from "@/lib/monad-testnet";
 
 const SIGNER_ID = process.env.NEXT_PUBLIC_PRIVY_SIGNER_ID ?? "";
 const EXPLORER = "https://testnet.monadvision.com/address/";
+
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_ATTEMPTS = 20;
 
 type WalletCard = {
   cardId?: string | null;
@@ -41,6 +50,7 @@ type WalletCard = {
   artworkUrl?: string;
   rarity: number;
   displayStatus?: string;
+  isListed?: boolean;
 };
 
 const RARITY = ["Common", "Rare", "Epic", "Legendary"];
@@ -75,8 +85,17 @@ function Workspace() {
   const { wallets } = useWallets();
   const { addSigners, removeSigners } = useSigners();
   const { exportWallet } = useExportWallet();
+  const { signTypedData } = useSignTypedData();
 
   const [cards, setCards] = useState<WalletCard[]>([]);
+  // Cards Gachard still holds that are eligible to move. Choosing them happens
+  // here rather than on /collection, so the consumer surface carries no wallet
+  // action at all (ADR-002).
+  const [movable, setMovable] = useState<WalletCard[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [advanced, setAdvanced] = useState(false);
+  const [userId, setUserId] = useState<string>("");
+  const [moveNote, setMoveNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -102,6 +121,14 @@ function Workspace() {
       const body = await res.json().catch(() => null);
       const all: WalletCard[] = body?.cards ?? body ?? [];
       setCards(all.filter((c) => c.displayStatus === "In Your Wallet"));
+      // A listed card is promised to a buyer, and one without a token id is not
+      // on chain yet, so neither can leave.
+      setMovable(
+        all.filter(
+          (c) =>
+            c.displayStatus === "Digital" && c.tokenId !== null && !c.isListed && !!c.cardId
+        )
+      );
     } catch {
       /* the page still renders without the list */
     } finally {
@@ -112,6 +139,27 @@ function Workspace() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The signature names the user, so this has to be the same id the server
+  // checks it against.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("user");
+      if (raw) setUserId(JSON.parse(raw)?.user_id ?? "");
+    } catch {
+      /* the page still renders; moving a card will ask them to sign in */
+    }
+  }, []);
+
+  // The profile switch still decides whether moving cards out is offered at
+  // all. It governs this page now, instead of putting a button on every card
+  // in the collection.
+  useEffect(() => {
+    fetch("/api/user/advanced", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setAdvanced(d?.enabled === true))
+      .catch(() => {});
+  }, []);
 
   // This page has its own Privy login, so it has to bind too. Otherwise a
   // user who never opens /profile is connected here but unknown to the
@@ -172,6 +220,103 @@ function Workspace() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+  const poll = useCallback(async (cardId: string) => {
+    for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
+      const res = await fetch(`/api/privy/status/${cardId}`);
+      const body = await res.json().catch(() => null);
+      if (body?.settled) return body;
+      if (body?.claimStatus === "failed") {
+        throw new Error("That did not go through. Please try again.");
+      }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+    // Not a failure: the work may still land. Saying so beats implying loss.
+    return null;
+  }, []);
+
+  /**
+   * Move the chosen cards, one at a time.
+   *
+   * Sequential on purpose. Each card needs its own signature and Privy shows
+   * one prompt at a time, and running them together would race the server's
+   * nonce handling. A failure stops the run rather than pressing on, so the
+   * count reported back is always the count that actually moved.
+   */
+  const moveSelected = useCallback(async () => {
+    const chosen = movable.filter((c) => selected.has(c.cardId!));
+    if (chosen.length === 0 || !address) return;
+    if (!userId) {
+      setErr("Please sign in again.");
+      return;
+    }
+
+    setErr(null);
+    setNote(null);
+    let moved = 0;
+
+    for (const [i, card] of chosen.entries()) {
+      setBusy(`move-${card.cardId}`);
+      setMoveNote(`Card ${i + 1} of ${chosen.length} — confirm the signature…`);
+      try {
+        const nonce = crypto.randomUUID();
+        const deadline = Math.floor(Date.now() / 1000) + 600;
+
+        // uint256 values go as strings: the digest is identical either way, and
+        // this is the exact shape already proven against Privy's
+        // eth_signTypedData_v4. v3 resolves to { signature }, not the string.
+        const { signature } = await signTypedData({
+          domain: buildExportIntentDomain(),
+          types: EXPORT_INTENT_SIGNING_TYPES as unknown as Record<
+            string,
+            { name: string; type: string }[]
+          >,
+          primaryType: "ExportIntent",
+          message: {
+            tokenId: String(card.tokenId),
+            to: address,
+            userId,
+            nonce,
+            deadline: String(deadline),
+          },
+        });
+
+        setMoveNote(`Card ${i + 1} of ${chosen.length} — moving…`);
+        const prep = await fetch("/api/privy/export/prepare", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ cardId: card.cardId, signature, nonce, deadline }),
+        });
+        const prepBody = await prep.json().catch(() => null);
+        if (!prep.ok) throw new Error(prepBody?.error ?? "Could not move that card.");
+
+        const claim = await fetch("/api/privy/export/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ cardId: card.cardId }),
+        });
+        const claimBody = await claim.json().catch(() => null);
+        if (!claim.ok) throw new Error(claimBody?.error ?? "Could not finish the handover.");
+
+        await poll(card.cardId!);
+        moved++;
+      } catch (e) {
+        const why = e instanceof Error ? e.message : "Something went wrong.";
+        setErr(
+          moved > 0
+            ? `${why} ${moved} card${moved === 1 ? "" : "s"} moved before this one.`
+            : why
+        );
+        break;
+      }
+    }
+
+    setBusy(null);
+    setMoveNote(null);
+    setSelected(new Set());
+    if (moved > 0) setNote(`${moved} card${moved === 1 ? "" : "s"} moved to your wallet.`);
+    await load();
+  }, [movable, selected, address, userId, signTypedData, poll, load]);
 
   if (!ready) {
     return (
@@ -320,6 +465,167 @@ function Workspace() {
 
         </div>
 
+        {/* Without this the page is a dead end for anyone whose switch is off:
+            a wallet, no cards, and nothing saying why they cannot fill it. */}
+        {!advanced && (
+          <section className="glass p-6" data-testid="wallet-locked">
+            <Eyebrow>Move cards in</Eyebrow>
+            <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-tertiary)" }}>
+              Advanced access is off, so cards cannot leave Gachard. Turn it on in your profile
+              and they will be listed here to choose from.
+            </p>
+            <Link href="/profile" className="btn-ghost !py-2 !px-4 !text-[0.7rem]" data-testid="wallet-to-profile">
+              Go to profile
+            </Link>
+          </section>
+        )}
+
+        {/* Choose what to move. The only place in the app that offers this, so
+            /collection and /profile stay free of it. */}
+        {advanced && (
+          <section data-testid="wallet-movable">
+            <Eyebrow
+              right={
+                movable.length > 0 ? (
+                  <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
+                    {selected.size} of {movable.length} selected
+                  </span>
+                ) : undefined
+              }
+            >
+              Move cards in
+            </Eyebrow>
+
+            {!delegated ? (
+              <div className="glass p-6">
+                <p className="text-sm leading-relaxed" style={{ color: "var(--text-tertiary)" }}>
+                  Give Gachard permission above first. Without it a card that leaves cannot
+                  come back.
+                </p>
+              </div>
+            ) : movable.length === 0 ? (
+              <div className="glass p-8 text-center">
+                <p className="text-3xl mb-3" style={{ color: "var(--border-strong)" }}>
+                  ◆
+                </p>
+                <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+                  Nothing to move. Cards listed for sale, or still being minted, stay where
+                  they are.
+                </p>
+              </div>
+            ) : (
+              <>
+                <ul className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {movable.map((c) => {
+                    const id = c.cardId!;
+                    const on = selected.has(id);
+                    const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
+                    return (
+                      <li key={id}>
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={on}
+                          disabled={busy !== null}
+                          onClick={() =>
+                            setSelected((s) => {
+                              const next = new Set(s);
+                              if (next.has(id)) next.delete(id);
+                              else next.add(id);
+                              return next;
+                            })
+                          }
+                          className="card-surface glass-hover p-3 w-full text-left transition-all disabled:opacity-50"
+                          style={{
+                            borderColor: on ? "var(--electric-blue)" : undefined,
+                            background: on ? "rgba(0,204,255,0.07)" : undefined,
+                          }}
+                          data-testid={`wallet-pick-${c.tokenId}`}
+                        >
+                          <div
+                            className={`relative w-full rounded-xl overflow-hidden mb-3 bg-white/5 ${on ? RARITY_GLOW[c.rarity] ?? "" : ""}`}
+                            style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
+                          >
+                            {c.artworkUrl ? (
+                              <Image
+                                src={c.artworkUrl}
+                                alt={c.templateName ?? `Card ${c.tokenId}`}
+                                fill
+                                sizes="(max-width:640px) 45vw, 20vw"
+                                className="object-contain"
+                                style={{ opacity: on ? 1 : 0.72 }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <span className="text-3xl" style={{ color: "var(--border-strong)" }}>
+                                  ◆
+                                </span>
+                              </div>
+                            )}
+                            <span
+                              className="absolute top-2 right-2 flex items-center justify-center rounded-md text-[0.7rem] font-semibold"
+                              style={{
+                                width: 20,
+                                height: 20,
+                                background: on ? "var(--electric-blue)" : "rgba(0,0,0,0.45)",
+                                border: `1px solid ${on ? "var(--electric-blue)" : "var(--border-strong)"}`,
+                                color: on ? "#0B0E1A" : "transparent",
+                              }}
+                            >
+                              ✓
+                            </span>
+                          </div>
+                          <p className="text-[0.78rem] leading-tight truncate" title={c.templateName ?? ""}>
+                            {c.templateName ?? `Card #${c.tokenId}`}
+                          </p>
+                          <p
+                            className="text-[0.6rem] uppercase tracking-[0.12em]"
+                            style={{ color: colour }}
+                          >
+                            {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
+                          </p>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <div className="glass mt-4 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-[0.7rem]" style={{ color: "var(--text-tertiary)" }}>
+                    {moveNote ??
+                      (selected.size === 0
+                        ? "Pick the cards you want to hold yourself."
+                        : "You will be asked to sign once per card.")}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {selected.size > 0 && busy === null && (
+                      <button
+                        onClick={() => setSelected(new Set())}
+                        className="btn-ghost !py-2 !px-3 !text-[0.65rem]"
+                        data-testid="wallet-clear-selection"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <button
+                      onClick={moveSelected}
+                      disabled={selected.size === 0 || busy !== null}
+                      className="btn-primary !py-2 !px-5 !text-[0.68rem] disabled:opacity-40"
+                      data-testid="wallet-move-selected"
+                    >
+                      {busy !== null && busy.startsWith("move-")
+                        ? "Moving…"
+                        : selected.size === 0
+                          ? "Move cards"
+                          : `Move ${selected.size} ${selected.size === 1 ? "card" : "cards"}`}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
         {/* Cards held here */}
         <section data-testid="wallet-cards">
           <Eyebrow
@@ -346,7 +652,7 @@ function Workspace() {
                 ◆
               </p>
               <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
-                None yet. Move a card here from your collection.
+                None yet. Pick one above to move it here.
               </p>
             </div>
           ) : (

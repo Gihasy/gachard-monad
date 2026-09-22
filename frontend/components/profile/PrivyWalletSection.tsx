@@ -4,10 +4,13 @@
  * "For Advanced Users" on /profile (ADR-028, extended for ADR-031).
  *
  * Two decisions live here and they are deliberately separate. Linking a Privy
- * wallet is one; turning on the per-card "Move to My Wallet" action is
- * another. Someone can hold a wallet and still not want an irreversible
- * button on every card they own, so the switch is its own control rather than
- * something the link implies.
+ * wallet is one; allowing cards to leave Gachard is another. Someone can hold
+ * a wallet and still not want that available, so the switch is its own control
+ * rather than something the link implies.
+ *
+ * The switch has no effect on this page or on /collection. Choosing which
+ * cards move happens only on /wallet, which keeps every consumer surface free
+ * of wallet actions (ADR-002).
  *
  * The warning is not decoration. Everything below it is hard or impossible to
  * undo: a card sent to an outside address cannot be recovered, the wallet link
@@ -223,8 +226,8 @@ function PrivyWalletContent() {
               <p className="text-sm">Advanced access</p>
               <p className="text-[0.7rem]" style={{ color: "var(--text-tertiary)" }}>
                 {advanced
-                  ? "Every card shows Move to My Wallet."
-                  : "Your cards stay as they are, with no wallet actions."}
+                  ? "Choose cards to move on your wallet page."
+                  : "Your cards stay as they are. Nothing can be moved out."}
               </p>
             </div>
             <button
