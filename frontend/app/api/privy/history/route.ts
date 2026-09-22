@@ -28,7 +28,7 @@ import { getAuthenticatedUser } from "@/lib/session";
 import { generateInvoiceId } from "@/lib/invoice";
 
 /** Every type that moves a card into or out of the self-custody wallet. */
-const WALLET_TYPES = ["privy_export", "privy_import", "privy_send"];
+const WALLET_TYPES = ["privy_export", "privy_import", "privy_send", "privy_receive"];
 
 const LIMIT = 50;
 

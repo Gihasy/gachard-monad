@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Fragment } from "react";
+import { friendlyTxType } from "@/lib/status-map";
 import PageShell from "@/components/PageShell";
 
 type AdminUser = {
@@ -1228,7 +1229,10 @@ function TxsTable({ txs }: { txs: AdminTx[] }) {
               <td className="px-4 py-3.5">
                 <StatusPill status={tx.status} rgb={tx.rawStatus === "confirmed" ? "0,204,255" : tx.rawStatus === "failed" ? "255,107,186" : "255,196,102"} />
               </td>
-              <td className="px-4 py-3.5 capitalize text-white/80">{tx.type}</td>
+              {/* The shared map, not the raw key: `capitalize` on an
+                  identifier renders "Privy_receive". The filter above still
+                  compares tx.type, so only the label changes. */}
+              <td className="px-4 py-3.5 text-white/80">{friendlyTxType(tx.type)}</td>
               <td className="px-4 py-3.5">
                 {tx.riskScore !== null ? (
                   <button

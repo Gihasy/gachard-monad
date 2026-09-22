@@ -196,10 +196,26 @@ export default function WalletHistory() {
                           {short(tx.txHash)}
                         </a>
                       ) : (
-                        // No hash means nothing was sent on chain for this row
-                        // — a movement Gachard recorded but the network never
-                        // saw. Worth showing as absent rather than blank.
-                        <span style={{ color: "var(--text-tertiary)" }}>Off chain</span>
+                        // A missing hash means three different things, and
+                        // collapsing them into one word was wrong for two of
+                        // them. Still settling is not the same as never
+                        // recorded, and neither is the same as never on chain.
+                        <span
+                          style={{ color: "var(--text-tertiary)" }}
+                          title={
+                            tx.status === "Processing"
+                              ? "Waiting for the network to confirm this transfer."
+                              : tx.type === "privy_receive"
+                                ? "Gachard did not carry this transfer, so it has no record of the hash. The card's arrival was confirmed by reading the chain."
+                                : "No on-chain transaction was made for this."
+                          }
+                        >
+                          {tx.status === "Processing"
+                            ? "Settling…"
+                            : tx.type === "privy_receive"
+                              ? "Not recorded"
+                              : "Off chain"}
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-3">

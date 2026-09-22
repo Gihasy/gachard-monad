@@ -42,6 +42,8 @@ interface CardDoc {
   importTxHash?: string;
   releaseTxId?: string;
   releaseTxHash?: string;
+  rarity?: number;
+  templateId?: string;
 }
 
 const CLEAR_EXPORT_CYCLE = {
@@ -313,6 +315,52 @@ export async function reconcileExportedCard(card: CardDoc): Promise<ReconcileRes
   // the hash is recorded first, the status second — which costs one extra
   // sweep and keeps the outbound hash rather than discarding it.
   if (privyHolds && card.status === "Released") {
+    // Record it, or it happened nowhere a person can see. /wallet's activity
+    // table and the admin console both read the transactions collection, so a
+    // repair that only touches the card document leaves a card that visibly
+    // moved with no trace of moving.
+    //
+    // No hash. Gachard did not carry this transfer and cannot cheaply find
+    // it: this RPC limits eth_getLogs to a 100-block range, and the arrival
+    // may be thousands of blocks back by the time anyone presses Refresh.
+    // Searching would mean dozens of sequential calls inside a ten-second
+    // request, which is not a trade worth making for a display field.
+    //
+    // No counterparty either. The card records where it was sent, and it
+    // probably came back from there — but "probably" written into a ledger
+    // reads as fact, and a wrong address is worse than an honest blank.
+    //
+    // Confirmed, not pending: the token is demonstrably in the wallet. This
+    // row describes something that has already finished.
+    //
+    // Written before the status changes, and only in this branch, so it
+    // cannot run twice: the next sweep sees Exported and never arrives here.
+    // The owner, looked up rather than read off the card. No card document
+    // has a userId — they are keyed to their owner by ownerAddress — and a
+    // row written with a null one would be invisible to /api/privy/history,
+    // which selects by userId. The history table would stay empty and this
+    // whole record would have been for nothing.
+    const users = await getCollection("users");
+    const owner = await users.findOne({ walletAddress: card.ownerAddress });
+
+    const txs = await getCollection("transactions");
+    await txs.insertOne({
+      userId: owner?._id?.toString() ?? null,
+      type: "privy_receive",
+      tokenId,
+      tokenIds: [tokenId],
+      rarity: card.rarity ?? 0,
+      templateIds: card.templateId ? [card.templateId] : [],
+      txHash: null,
+      status: "confirmed",
+      contractAddress: process.env.CONTRACT_ADDRESS ?? null,
+      fromAddress: null,
+      toAddress: card.privyWalletAddress,
+      detectedBy: "reconcile",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
     await cards.updateOne(
       { _id: card._id },
       {

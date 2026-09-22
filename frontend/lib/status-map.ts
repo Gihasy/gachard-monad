@@ -31,6 +31,7 @@ const TX_TYPE_MAP: Record<string, string> = {
   privy_export: "Sent to Your Wallet",
   privy_import: "Returned to Gachard",
   privy_send: "Sent Outside Gachard",
+  privy_receive: "Arrived From Outside",
 };
 
 /**
