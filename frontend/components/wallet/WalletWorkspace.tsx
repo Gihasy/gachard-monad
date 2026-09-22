@@ -78,6 +78,7 @@ function Workspace() {
   const [transferring, setTransferring] = useState<WalletCard | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [returnNote, setReturnNote] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
   const address = embedded?.address ?? null;
@@ -96,7 +97,19 @@ function Workspace() {
       const res = await fetch("/api/cards", { credentials: "include" });
       const body = await res.json().catch(() => null);
       const all: WalletCard[] = body?.cards ?? body ?? [];
-      setCards(all.filter((c) => c.displayStatus === "In Your Wallet"));
+      const held = all.filter((c) => c.displayStatus === "In Your Wallet");
+      setCards(held);
+
+      // A selection can outlive the card it points at — a refresh after a
+      // return, or a transfer made in another tab. Left alone, Return would
+      // offer to send back a card that is not here and fail one request per
+      // ghost. Identity is preserved when nothing was dropped, so a refresh
+      // that changes nothing does not re-render the grid.
+      const present = new Set(held.map((c) => c.cardId ?? String(c.tokenId)));
+      setPicked((prev) => {
+        const kept = [...prev].filter((id) => present.has(id));
+        return kept.length === prev.size ? prev : new Set(kept);
+      });
     } catch {
       /* the page still renders without the list */
     } finally {
@@ -107,6 +120,30 @@ function Workspace() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * Reload the list on demand.
+   *
+   * Privy settles sponsored transfers asynchronously, so a card can arrive or
+   * leave seconds after the page rendered and nothing here would know. The
+   * only way to find out was to reload the whole page, which also logs the
+   * Privy session back in and costs a few seconds.
+   *
+   * `loading` is deliberately not reused: it swaps the grid for the word
+   * "Loading…", so a refresh would make the cards disappear and come back.
+   * The list stays on screen and only the button says anything.
+   */
+  const refresh = useCallback(async () => {
+    if (refreshing || busy !== null) return;
+    setRefreshing(true);
+    setErr(null);
+    setNote(null);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, refreshing, busy]);
 
 
   // This page has its own Privy login, so it has to bind too. Otherwise a
@@ -422,13 +459,44 @@ function Workspace() {
         <section data-testid="wallet-cards">
           <Eyebrow
             right={
-              cards.length > 0 ? (
-                <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
-                  {picked.size > 0
-                    ? `${picked.size} of ${cards.length} selected`
-                    : `${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
-                </span>
-              ) : undefined
+              <span className="flex items-center gap-3">
+                {cards.length > 0 && (
+                  <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
+                    {picked.size > 0
+                      ? `${picked.size} of ${cards.length} selected`
+                      : `${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+                  </span>
+                )}
+                {/* Shown even when the list is empty — an empty wallet is
+                    exactly when someone is waiting for a card to land. */}
+                <button
+                  onClick={refresh}
+                  disabled={refreshing || busy !== null}
+                  className="flex items-center gap-1.5 text-[0.65rem] px-2 py-1 rounded-lg transition-all disabled:opacity-40"
+                  style={{
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--text-tertiary)",
+                  }}
+                  title="Check for cards that have arrived or left since this page loaded"
+                  data-testid="wallet-refresh"
+                >
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    className={refreshing ? "animate-spin" : undefined}
+                    aria-hidden="true"
+                  >
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                    <path d="M21 3v6h-6" />
+                  </svg>
+                  {refreshing ? "Refreshing…" : "Refresh"}
+                </button>
+              </span>
             }
           >
             Cards in this wallet
