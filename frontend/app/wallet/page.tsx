@@ -37,8 +37,8 @@ export default function WalletPage() {
       description="Hold your cards yourself. Move them out of Gachard, bring them back, or take them anywhere you like."
       testId="wallet-page"
       actions={
-        <Link href="/collection" className="btn-ghost !py-2 !px-4 !text-xs">
-          Back to collection
+        <Link href="/profile" className="btn-ghost !py-2 !px-4 !text-xs">
+          Back to profile
         </Link>
       }
     >
