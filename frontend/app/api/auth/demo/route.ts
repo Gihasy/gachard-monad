@@ -13,8 +13,9 @@ import { createSessionToken, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/
  * any blockchain data are never shown to the user — they are only visible in
  * the Admin console. Each account gets a sequential handle @DemoN.
  *
- * Establishes the app's standard session on the client (localStorage `user` +
- * `gachard_uid` cookie). Gated by the ENABLE_DEMO_LOGIN env flag.
+ * Establishes the app's standard session: the signed, httpOnly session cookie
+ * from this response, plus localStorage `user` on the client. Gated by the
+ * ENABLE_DEMO_LOGIN env flag.
  */
 async function nextDemoNumber(): Promise<number> {
   const counters = await getCollection("counters");

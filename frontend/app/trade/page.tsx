@@ -12,7 +12,8 @@ interface Listing {
   cardId: string;
   tokenId: number;
   templateId: string;
-  sellerId: string;
+  /** Set by the server; the seller's id is never sent to the browser. */
+  isOwn: boolean;
   price: number;
   status: string;
   artworkUrl: string | null;
@@ -348,7 +349,7 @@ export default function MarketplacePage() {
 
                     {/* Cart */}
                     {(() => {
-                      const isOwnListing = !!(user && listing.sellerId === user.user_id);
+                      const isOwnListing = listing.isOwn === true;
                       const alreadyInCart = isInCartFn(listing.listingId);
                       const disabled = alreadyInCart || isOwnListing;
                       return (
@@ -380,7 +381,7 @@ export default function MarketplacePage() {
                 </div>
 
                 {/* Buy button — full width */}
-                {(!user || listing.sellerId !== user.user_id) && (
+                {!listing.isOwn && (
                   <button
                     onClick={() => {
                       if (!user) { setShowLoginPrompt(true); return; }

@@ -92,6 +92,12 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const templateId = searchParams.get("templateId") || undefined;
 
+    // Anonymous browsing is allowed here, so a missing session is not an
+    // error. It only decides whether a listing can be marked as the viewer's
+    // own.
+    const viewer = await getAuthenticatedUser(req).catch(() => null);
+    const viewerId = viewer?._id?.toString() ?? null;
+
     const listingsCol = await getCollection("listings");
     const query: Record<string, unknown> = { status: "active" };
     if (templateId) query.templateId = templateId;
@@ -155,8 +161,24 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // sellerId and the raw _id never leave the server. This endpoint is
+      // public, and sellerId is the seller's MongoDB id; handing it to
+      // anonymous callers is what turned the unsigned session cookie from a
+      // weak gate into a way to take over any account that had ever listed a
+      // card. The UI only needed "is this mine", so that is what it gets.
+      // sellerWalletAddress goes too: ADR-002 says a user never sees a wallet
+      // address, and publishing the seller's would let anyone read that
+      // person's entire on-chain collection from a listing.
+      const { sellerId, sellerWalletAddress, _id, ...safe } = listing as Record<
+        string,
+        unknown
+      > & { sellerId?: string };
+      void _id;
+      void sellerWalletAddress;
+
       return {
-        ...listing,
+        ...safe,
+        isOwn: viewerId !== null && sellerId === viewerId,
         artworkUrl: template?.artworkUrl || null,
         templateName: template?.name || listing.templateId,
         rarity: template?.rarity ?? 0,

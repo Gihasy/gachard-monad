@@ -73,20 +73,14 @@ export async function getAuthenticatedUser(req: Request) {
     }
   }
 
-  // Fallback: legacy gachard_uid cookie (pre-session-auth users)
-  const legacyMatch = cookieHeader.match(/(?:^|;\s*)gachard_uid=([^;]*)/);
-  if (legacyMatch) {
-    const uid = decodeURIComponent(legacyMatch[1]);
-    try {
-      const usersCollection = await getCollection("users");
-      const user = await usersCollection.findOne(
-        { _id: parseObjectId(uid) } as Record<string, unknown>
-      );
-      if (user) return user;
-    } catch {
-      // invalid ObjectId format — ignore
-    }
-  }
-
+  // There is deliberately no fallback here.
+  //
+  // This used to accept a bare `gachard_uid` cookie and look the user up by
+  // it. That cookie is written by client script and carries no signature, so
+  // anyone who knew a user's ObjectId could set it and be that user: read
+  // their cards, spend their credits, move cards to a wallet. The ids were not
+  // even secret — the public marketplace listings endpoint returned sellerId
+  // straight from the document. Identity comes from the signed session or not
+  // at all.
   return null;
 }

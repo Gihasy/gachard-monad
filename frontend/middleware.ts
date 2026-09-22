@@ -102,20 +102,11 @@ export async function middleware(req: NextRequest) {
     }
 
     const sessionCookie = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-    const legacyUid = req.cookies.get("gachard_uid")?.value;
-
-    // Accept if EITHER session cookie OR legacy uid cookie exists
-    // Route handlers do full verification via getAuthenticatedUser()
-    if (!sessionCookie && !legacyUid) {
+    if (!sessionCookie) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-
-    // If has session cookie, verify it at edge for fast rejection
-    if (sessionCookie) {
-      const valid = await verifySessionTokenEdge(sessionCookie);
-      if (!valid && !legacyUid) {
-        return NextResponse.json({ error: "Invalid or expired session" }, { status: 401 });
-      }
+    if (!(await verifySessionTokenEdge(sessionCookie))) {
+      return NextResponse.json({ error: "Invalid or expired session" }, { status: 401 });
     }
 
     return NextResponse.next();
@@ -127,8 +118,13 @@ export async function middleware(req: NextRequest) {
   );
   if (!isProtected) return NextResponse.next();
 
-  const uid = req.cookies.get("gachard_uid")?.value;
-  if (uid) return NextResponse.next();
+  // Pages are checked exactly like APIs. This used to wave through anyone
+  // carrying a `gachard_uid` cookie, which is unsigned and writable from the
+  // console, so the gate was decorative.
+  const sessionCookie = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (sessionCookie && (await verifySessionTokenEdge(sessionCookie))) {
+    return NextResponse.next();
+  }
 
   const url = req.nextUrl.clone();
   url.pathname = "/login";

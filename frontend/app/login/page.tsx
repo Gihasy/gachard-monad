@@ -51,7 +51,6 @@ function LoginInner() {
       }
       const result = await res.json();
       localStorage.setItem("user", JSON.stringify(result));
-      document.cookie = `gachard_uid=${encodeURIComponent(result.user_id)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
       window.location.href = next;
     } catch (err) {
       setError((err as Error).message || "Could not generate demo account");
@@ -99,8 +98,7 @@ function LoginInner() {
 
               const result = await res.json();
               localStorage.setItem("user", JSON.stringify(result));
-              document.cookie = `gachard_uid=${encodeURIComponent(result.user_id)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
-              window.location.href = next;
+                      window.location.href = next;
             } catch (err) {
               setError((err as Error).message || "Login failed");
             } finally {

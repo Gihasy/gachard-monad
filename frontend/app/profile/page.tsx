@@ -142,11 +142,18 @@ export default function Profil() {
     physical: cards.filter((c) => c.displayStatus === "Physical").length,
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // The session cookie is httpOnly, so only the server can end the session.
+    // Clearing localStorage alone used to leave the browser fully signed in.
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {
+      // Network failure: still clear what is local, so the UI is not stuck
+      // signed in. The cookie expires on its own.
+    }
     localStorage.removeItem("user");
     localStorage.removeItem("gachard_cart");
     localStorage.removeItem("gachard_wishlist");
-    document.cookie = "gachard_uid=; path=/; max-age=0; SameSite=Lax";
     window.dispatchEvent(new Event("auth-change"));
     window.dispatchEvent(new CustomEvent("gachard-cart-change"));
     router.push("/");
