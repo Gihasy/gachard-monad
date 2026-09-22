@@ -10,6 +10,13 @@
  *
  * Mounts its own PrivyProvider, the same island pattern as /profile, so the
  * SDK never loads on pack opening or anywhere else.
+ *
+ * Presentation uses the shared vocabulary rather than one-off styling: the
+ * violet eyebrow that heads every section in the app, .glass for surfaces,
+ * .card-surface with .glass-hover for tiles, .chip for state, .form-field
+ * for inputs, and the rarity tokens for card frames. Irreversible actions
+ * are the one deliberate deviation: aurora-pink, used nowhere else on this
+ * page, so "this cannot be undone" registers before the label is read.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
@@ -36,8 +43,6 @@ type WalletCard = {
 };
 
 const RARITY = ["Common", "Rare", "Epic", "Legendary"];
-// Same tokens and glow classes the collection grid uses, so a card looks
-// like itself wherever it is shown.
 const RARITY_COLORS = [
   "var(--rarity-common)",
   "var(--rarity-rare)",
@@ -46,8 +51,22 @@ const RARITY_COLORS = [
 ];
 const RARITY_GLOW = ["", "glow-rare", "glow-epic", "glow-legendary"];
 
-function busyLabel(a: string | null) {
-  return a === "claim" ? "Finishing…" : a === "return" ? "Returning…" : a === "send" ? "Sending…" : "…";
+function Eyebrow({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 mb-4">
+      <p
+        className="text-[0.72rem] uppercase tracking-[0.22em]"
+        style={{ color: "var(--cosmic-violet)" }}
+      >
+        {children}
+      </p>
+      {right}
+    </div>
+  );
+}
+
+function busyLabel(a: string) {
+  return a === "return" ? "Returning…" : a === "send" ? "Sending…" : "…";
 }
 
 function Workspace() {
@@ -62,6 +81,7 @@ function Workspace() {
   const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [sendTo, setSendTo] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState(false);
 
   const embedded = wallets.find((w) => w.walletClientType === "privy");
   const address = embedded?.address ?? null;
@@ -119,17 +139,28 @@ function Workspace() {
       body: JSON.stringify(payload),
     });
 
-  if (!ready) return <p className="text-sm text-white/40">Loading…</p>;
+  if (!ready) {
+    return (
+      <div className="glass p-6">
+        <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+          Loading…
+        </p>
+      </div>
+    );
+  }
 
   if (!authenticated || !address) {
     return (
-      <div className="glass rounded-2xl p-5 space-y-3">
-        <h2 className="text-base font-semibold">Set up your own wallet</h2>
-        <p className="text-xs text-white/50">
-          A wallet only you control. Your cards can move into it, and back, and you can take
-          them anywhere.
+      <div className="glass p-6" data-testid="wallet-setup-card">
+        <Eyebrow>Get started</Eyebrow>
+        <h2 className="text-lg mb-2" style={{ fontFamily: "var(--font-display)" }}>
+          A wallet only you control
+        </h2>
+        <p className="text-sm leading-relaxed mb-5" style={{ color: "var(--text-tertiary)" }}>
+          Your cards can move into it and back out again, and you can take them anywhere you
+          like. Nothing changes for the rest of Gachard.
         </p>
-        <button onClick={login} className="btn-primary !py-2 !text-xs" data-testid="wallet-setup">
+        <button onClick={login} className="btn-primary !py-2.5 !px-6 !text-xs" data-testid="wallet-setup">
           Set up
         </button>
       </div>
@@ -137,46 +168,82 @@ function Workspace() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Identity */}
-      <div className="glass rounded-2xl p-5 space-y-2">
-        <h2 className="text-base font-semibold">Your wallet</h2>
-        <p className="text-sm text-white/70 font-mono break-all" data-testid="wallet-address">
-          {address}
-        </p>
-        <a
-          href={`${EXPLORER}${address}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs"
-          style={{ color: "var(--electric-blue)" }}
+      <section className="glass p-6" data-testid="wallet-identity">
+        <Eyebrow
+          right={
+            <a
+              href={`${EXPLORER}${address}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[0.7rem] transition-all hover:brightness-125"
+              style={{ color: "var(--electric-blue)" }}
+            >
+              Explorer ↗
+            </a>
+          }
         >
-          View on explorer →
-        </a>
-      </div>
+          Your wallet
+        </Eyebrow>
+        <div className="card-surface px-4 py-3 flex items-center gap-3">
+          <p
+            className="text-[0.8rem] font-mono break-all flex-1"
+            style={{ color: "var(--text-secondary)" }}
+            data-testid="wallet-address"
+          >
+            {address}
+          </p>
+          <button
+            onClick={() => {
+              navigator.clipboard?.writeText(address).then(
+                () => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1600);
+                },
+                () => {}
+              );
+            }}
+            className="btn-ghost !py-1.5 !px-3 !text-[0.6rem] shrink-0"
+            data-testid="wallet-copy"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      </section>
 
       {/* Permission */}
-      <div className="glass rounded-2xl p-5 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Gachard access</h2>
-          <span
-            className="text-[0.65rem] px-2 py-1 rounded-full"
-            style={{
-              background: delegated ? "rgba(0,204,255,0.12)" : "rgba(255,196,102,0.1)",
-              color: delegated ? "var(--electric-blue)" : "var(--aurora-gold)",
-            }}
-            data-testid="delegation-state"
-          >
-            {delegated ? "Allowed" : "Not allowed"}
-          </span>
-        </div>
-        <p className="text-xs text-white/50">
+      <section className="glass p-6" data-testid="wallet-access">
+        <Eyebrow
+          right={
+            <span
+              className="chip !py-1 !px-3 !text-[0.6rem]"
+              style={{
+                borderColor: delegated ? "rgba(0,204,255,0.3)" : "rgba(255,196,102,0.3)",
+                color: delegated ? "var(--electric-blue)" : "var(--aurora-gold)",
+              }}
+              data-testid="delegation-state"
+            >
+              <span
+                className="chip-dot"
+                style={{
+                  background: delegated ? "var(--electric-blue)" : "var(--aurora-gold)",
+                  boxShadow: `0 0 8px ${delegated ? "var(--electric-blue)" : "var(--aurora-gold)"}`,
+                }}
+              />
+              {delegated ? "Allowed" : "Not allowed"}
+            </span>
+          }
+        >
+          Gachard access
+        </Eyebrow>
+        <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-tertiary)" }}>
           {delegated
-            ? "Gachard can move cards in this wallet on your behalf, which is what lets a card come back to your collection. You can withdraw this at any time."
+            ? "Gachard can move cards in this wallet on your behalf, which is what lets a card come back to your collection. Withdraw it whenever you like."
             : "Allow Gachard to move cards in this wallet, so a card you take out can be returned later. Without it, a card that leaves cannot come back."}
         </p>
         {!SIGNER_ID && (
-          <p className="text-xs" style={{ color: "var(--aurora-pink)" }}>
+          <p className="text-xs mb-3" style={{ color: "var(--aurora-pink)" }}>
             Not configured on this deployment.
           </p>
         )}
@@ -201,127 +268,184 @@ function Workspace() {
             }
           }}
           disabled={busy !== null || !SIGNER_ID}
-          className={`${delegated ? "btn-ghost" : "btn-primary"} !py-2 !text-xs disabled:opacity-50`}
+          className={`${delegated ? "btn-ghost" : "btn-primary"} !py-2.5 !px-6 !text-xs disabled:opacity-50`}
           data-testid="delegation-toggle"
         >
           {busy === "perm" ? "…" : delegated ? "Withdraw access" : "Allow"}
         </button>
-      </div>
+      </section>
 
       {/* Cards held here */}
-      <div className="glass rounded-2xl p-5 space-y-3">
-        <h2 className="text-base font-semibold">Cards in this wallet</h2>
+      <section data-testid="wallet-cards">
+        <Eyebrow
+          right={
+            cards.length > 0 ? (
+              <span className="text-[0.65rem]" style={{ color: "var(--text-tertiary)" }}>
+                {cards.length} {cards.length === 1 ? "card" : "cards"}
+              </span>
+            ) : undefined
+          }
+        >
+          Cards in this wallet
+        </Eyebrow>
+
         {loading ? (
-          <p className="text-xs text-white/40">Loading…</p>
+          <div className="glass p-6">
+            <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+              Loading…
+            </p>
+          </div>
         ) : cards.length === 0 ? (
-          <p className="text-xs text-white/50">
-            None yet. Move a card here from your collection.
-          </p>
+          <div className="glass p-8 text-center">
+            <p className="text-3xl mb-3" style={{ color: "var(--border-strong)" }}>
+              ◆
+            </p>
+            <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+              None yet. Move a card here from your collection.
+            </p>
+          </div>
         ) : (
           <>
-          <ul className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {cards.map((c) => {
-              const id = c.cardId ?? String(c.tokenId);
-              const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
-              return (
-                <li key={id} className="flex flex-col">
-                  <div
-                    className={`relative w-full rounded-xl overflow-hidden mb-2 bg-white/5 ${RARITY_GLOW[c.rarity] ?? ""}`}
-                    style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
-                    data-testid={`wallet-card-visual-${c.tokenId}`}
-                  >
-                    {c.artworkUrl ? (
-                      <Image
-                        src={c.artworkUrl}
-                        alt={c.templateName ?? c.templateId ?? `Card ${c.tokenId}`}
-                        fill
-                        sizes="(max-width:640px) 45vw, 20vw"
-                        className="object-contain"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <span className="text-3xl text-white/30">◆</span>
+            <ul className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {cards.map((c) => {
+                const id = c.cardId ?? String(c.tokenId);
+                const colour = RARITY_COLORS[c.rarity] ?? RARITY_COLORS[0];
+                const addr = (sendTo[id] ?? "").trim();
+                return (
+                  <li key={id} className="card-surface glass-hover p-3 flex flex-col">
+                    <div
+                      className={`relative w-full rounded-xl overflow-hidden mb-3 bg-white/5 ${RARITY_GLOW[c.rarity] ?? ""}`}
+                      style={{ aspectRatio: "5/7", border: `1px solid ${colour}33` }}
+                      data-testid={`wallet-card-visual-${c.tokenId}`}
+                    >
+                      {c.artworkUrl ? (
+                        <Image
+                          src={c.artworkUrl}
+                          alt={c.templateName ?? c.templateId ?? `Card ${c.tokenId}`}
+                          fill
+                          sizes="(max-width:640px) 45vw, 20vw"
+                          className="object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="text-3xl" style={{ color: "var(--border-strong)" }}>
+                            ◆
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <p
+                      className="text-[0.78rem] leading-tight truncate"
+                      title={c.templateName ?? ""}
+                    >
+                      {c.templateName ?? `Card #${c.tokenId}`}
+                    </p>
+                    <p
+                      className="text-[0.6rem] uppercase tracking-[0.12em] mb-3"
+                      style={{ color: colour }}
+                    >
+                      {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
+                    </p>
+
+                    <button
+                      onClick={() =>
+                        act(
+                          `return-${id}`,
+                          post("/api/privy/import", { cardId: c.cardId }),
+                          "On its way back to your collection."
+                        )
+                      }
+                      disabled={busy !== null}
+                      className="btn-ghost !py-2 !px-2 !text-[0.62rem] w-full disabled:opacity-50"
+                      data-testid={`wallet-return-${c.tokenId}`}
+                    >
+                      {busy === `return-${id}` ? busyLabel("return") : "Return to Gachard"}
+                    </button>
+
+                    {/* Irreversible, so it is set apart by a rule rather than
+                        sitting flush with the reversible action above it. */}
+                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                      <div className="form-field">
+                        <input
+                          value={sendTo[id] ?? ""}
+                          onChange={(e) => setSendTo((s) => ({ ...s, [id]: e.target.value }))}
+                          placeholder="0x… send elsewhere"
+                          spellCheck={false}
+                          className="!text-[0.62rem] !py-2 !px-2.5 !rounded-lg font-mono"
+                          data-testid={`wallet-send-input-${c.tokenId}`}
+                        />
                       </div>
-                    )}
-                  </div>
-
-                  <p className="text-[0.75rem] leading-tight truncate" title={c.templateName ?? ""}>
-                    {c.templateName ?? `Card #${c.tokenId}`}
-                  </p>
-                  <p className="text-[0.6rem] mb-2" style={{ color: colour }}>
-                    {RARITY[c.rarity] ?? "Card"} · #{c.tokenId}
-                  </p>
-
-                  <button
-                    onClick={() =>
-                      act(`return-${id}`, post("/api/privy/import", { cardId: c.cardId }), "Coming back to your collection.")
-                    }
-                    disabled={busy !== null}
-                    className="btn-ghost !py-1.5 !px-2 !text-[0.6rem] w-full disabled:opacity-50"
-                    data-testid={`wallet-return-${c.tokenId}`}
-                  >
-                    {busy === `return-${id}` ? busyLabel("return") : "Return to Gachard"}
-                  </button>
-
-                  <input
-                    value={sendTo[id] ?? ""}
-                    onChange={(e) => setSendTo((s) => ({ ...s, [id]: e.target.value }))}
-                    placeholder="0x… send elsewhere"
-                    className="w-full text-[0.6rem] rounded-lg px-2 py-1.5 font-mono mt-1.5"
-                    style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)" }}
-                    data-testid={`wallet-send-input-${c.tokenId}`}
-                  />
-                  <button
-                    onClick={() =>
-                      act(
-                        `send-${id}`,
-                        post("/api/privy/send", { cardId: c.cardId, to: sendTo[id] }),
-                        "Sent. This card has left Gachard for good."
-                      )
-                    }
-                    disabled={busy !== null || !(sendTo[id] ?? "").trim()}
-                    className="btn-ghost !py-1.5 !px-2 !text-[0.6rem] w-full mt-1.5 disabled:opacity-50"
-                    data-testid={`wallet-send-${c.tokenId}`}
-                  >
-                    {busy === `send-${id}` ? busyLabel("send") : "Send"}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="text-[0.6rem] text-white/30">
-            Sending a card elsewhere is permanent. Gachard cannot bring it back.
-          </p>
+                      <button
+                        onClick={() =>
+                          act(
+                            `send-${id}`,
+                            post("/api/privy/send", { cardId: c.cardId, to: addr }),
+                            "Sent. This card has left Gachard for good."
+                          )
+                        }
+                        disabled={busy !== null || !addr}
+                        className="w-full mt-2 py-2 text-[0.62rem] rounded-xl transition-all disabled:opacity-40"
+                        style={{
+                          background: addr ? "rgba(255,107,186,0.12)" : "rgba(255,255,255,0.04)",
+                          border: `1px solid ${addr ? "rgba(255,107,186,0.35)" : "var(--border-subtle)"}`,
+                          color: addr ? "var(--aurora-pink)" : "var(--text-tertiary)",
+                        }}
+                        data-testid={`wallet-send-${c.tokenId}`}
+                      >
+                        {busy === `send-${id}` ? busyLabel("send") : "Send away"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="text-[0.65rem] mt-3" style={{ color: "var(--text-tertiary)" }}>
+              Sending a card elsewhere is permanent. Gachard cannot bring it back.
+            </p>
           </>
         )}
-      </div>
+      </section>
 
       {/* Full control */}
-      <div className="glass rounded-2xl p-5 space-y-3">
-        <h2 className="text-base font-semibold">Take full control</h2>
-        <p className="text-xs text-white/50">
+      <section
+        className="glass p-6"
+        style={{ borderColor: "rgba(255,107,186,0.18)" }}
+        data-testid="wallet-full-control"
+      >
+        <Eyebrow>Take full control</Eyebrow>
+        <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-tertiary)" }}>
           Reveal this wallet&apos;s private key to use it in another app. Anyone who has it owns
           the wallet, so keep it to yourself. Gachard never sees it.
         </p>
         <button
           onClick={() => exportWallet({ address })}
           disabled={busy !== null}
-          className="btn-ghost !py-2 !text-xs disabled:opacity-50"
+          className="py-2.5 px-6 text-xs rounded-xl transition-all disabled:opacity-50"
+          style={{
+            background: "rgba(255,107,186,0.12)",
+            border: "1px solid rgba(255,107,186,0.35)",
+            color: "var(--aurora-pink)",
+          }}
           data-testid="wallet-export-key"
         >
           Reveal private key
         </button>
-      </div>
+      </section>
 
-      {note && (
-        <p className="text-xs" style={{ color: "var(--electric-blue)" }} data-testid="wallet-note">
-          {note}
-        </p>
-      )}
-      {err && (
-        <p className="text-xs" style={{ color: "var(--aurora-pink)" }} data-testid="wallet-error">
-          {err}
-        </p>
+      {(note || err) && (
+        <div
+          className="card-surface px-4 py-3"
+          style={{ borderColor: err ? "rgba(255,107,186,0.35)" : "rgba(0,204,255,0.3)" }}
+        >
+          <p
+            className="text-xs"
+            style={{ color: err ? "var(--aurora-pink)" : "var(--electric-blue)" }}
+            data-testid={err ? "wallet-error" : "wallet-note"}
+          >
+            {err ?? note}
+          </p>
+        </div>
       )}
     </div>
   );
