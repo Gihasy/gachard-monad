@@ -28,11 +28,11 @@ Empat momen di Bagian 4 yang menopang seluruh argumen. Sisanya konteks.
 - **Transfer ke alamat lain** — dijalankan 22 September 2026 dengan kartu `#092ba` (token 272) ke `0xE9941E…642864`, hash `0x630d24d5…`. Kartunya kemudian dikirim balik ke wallet Privy lewat transfer yang **bukan** dilakukan Gachard, dan Gachard menemukannya dengan membaca saldo di rantai — tidak ada transaction id maupun baris pending untuk mencarinya. Itu beat terkuat yang Anda punya untuk bounty ini.
 - **Marketplace penuh** — 25 September 2026: pack di-mint lewat Pyth entropy, satu kartu dilisting 400 Crystal, dibeli akun kedua, token berpindah di rantai (`0x82e14b2b…`). Pembeli bayar 400, penjual terima 400; **tidak ada fee**.
 
-**Belum pernah dijalankan sungguhan:**
+- **Withdraw access** — dijalankan 25 September 2026. Diverifikasi ke Privy dari sisi server, bukan dari tampilan tombolnya: `delegated` terbaca true → false → true. Itu bacaan yang sama yang dipakai `/api/privy/import` dan `/api/privy/send` untuk menolak dengan `needs_delegation`.
 
-- **Withdraw access**, yaitu pencabutan delegasi
+**Tidak ada lagi yang belum dijalankan.** Keempat jalur wallet sudah terbukti sungguhan.
 
-Itu satu-satunya yang tersisa, dan dipakai di rekaman. **Coba satu kali sebelum merekam.**
+**Yang belum diperagakan — dan ini beat terkuat yang tersisa:** bahwa mencabut akses benar-benar **menghentikan** Gachard mengembalikan kartu. Membuktikannya menuntut ada kartu di wallet saat itu. Urutannya: export satu kartu → Withdraw access di depan kamera → coba Return, biarkan ditolak → Allow → Return berhasil. Penolakan di tengah itulah buktinya; saklar yang berpindah saja tidak membuktikan apa-apa.
 
 Catatan untuk Transfer: kalau Anda mengulanginya saat merekam, pakai alamat yang Anda kendalikan sendiri — kartunya benar-benar pergi. Kembalinya token 272 hanya mungkin karena alamat tujuannya adalah admin wallet Gachard sendiri.
 
