@@ -161,7 +161,13 @@ Cards follow the normal odds table. Guaranteed slots are Rare/Epic/Legendary wit
 **Decision**: Implement full marketplace with listing, buying, cancelling. Cards listed via `isListed` flag (MongoDB) + `marketplaceTransfer()` on-chain. Marketplace fee 8%. FVM (Fair Value Market) calculates average sold price per template. AI-powered market insight and price suggestion via LLM (provider is MiMo, see ADR-030; this line previously said Gemini API). Print blocked while card is listed.
 **Reason**: Enhances demo value for the hackathon. Shows full card lifecycle: mint → collect → trade → print → redeem. Blockchain abstraction is maintained: users see Credit prices, not crypto.
 
-**Clarification, 25 September 2026: the 8% is charged in Crystal, and it is a sink.** `MARKETPLACE_FEE_PERCENT = 8` in `api/marketplace/listings/[id]/buy` deducts the fee, but the deduction is never credited anywhere — it is simply not paid to the seller. Crystal cannot be bought, topped up, transferred or cashed out (ADR-026), so this line produces no money. It was described as a revenue source in `docs/PITCH-PREP.md` until today; that wording is corrected there. Nothing about the decision changes — only the sentence that kept being read off it.
+**Amendment, 25 September 2026: the 8% fee is removed from Crystal trades.** The seller now receives the whole listing price.
+
+The fee deducted 8% and credited it nowhere — not to a treasury, not to an account; it was simply not paid out. Crystal cannot be bought, topped up, transferred or cashed out (ADR-026), so the deduction could never become revenue however long it ran. It cost every seller 8% of every sale and earned the platform nothing, which is the worst shape a fee can take: a real cost to users in exchange for an imaginary one to the business. It was also written up as a revenue line in the pitch material, which is how a harmless-looking constant became a claim that would not survive one follow-up question.
+
+The fee itself is not abandoned. It moves to where a fee can actually be collected, which is ADR-034, and which is not built.
+
+**Consequence, the Crystal supply now only grows.** This 8% was the only sink in the app: dismantling creates Crystal (ADR-026), marketplace purchases move it between users, and nothing else destroyed any. Removing it means total Crystal rises with every dismantle and never falls. That is not a financial risk — Crystal is not purchasable and not redeemable, so there is nothing to be devalued in money terms — but listing prices will drift upward over time, and early dismantlers accumulate an advantage that never dilutes. If a sink is wanted later it should be something users choose to spend on, not a tax on the one action the marketplace exists to encourage.
 
 ## ADR-025: AI Anomaly Detection Oracle for Trade
 **Status**: Accepted
@@ -382,4 +388,28 @@ Keep them separate when speaking. Collapsing them into "we hide the metadata so 
 
 **Do not "fix" this.** An empty `uri()` reads like an oversight, and adding `app/api/metadata/[tokenId]` is half an hour's work that looks like an obvious improvement. It would dissolve the first reason and the third at once — the fee stops being collectable, and the one-sentence rule a non-crypto user relies on acquires an exception. If that trade is worth making later, amend this ADR; do not make it by accident while tidying.
 
-**Related**: the marketplace model where a card is exported to the user's own wallet before sale cannot collect a fee today — `marketplaceTransfer()` is `onlyOwner` and works only on custodial cards. A fee on a card Gachard does not hold needs an on-chain marketplace contract that does not exist. That is a separate decision and has not been made.
+**Related**: the marketplace model where a card is exported to the user's own wallet before sale is now **ADR-034**, which also records why it cannot collect a fee today. Read the two together before adding metadata: a Gachard-run marketplace renders cards from its own database and does not need `uri()`, but external liquidity would, and at that point these two ADRs conflict.
+
+## ADR-034: The Marketplace Fee Belongs to a Self-Custody Marketplace, Which Is Not Built
+
+**Status**: Proposed, 25 September 2026. **Nothing in this ADR exists in code.**
+
+**Decision**: a marketplace fee is charged only where it can actually be collected — on a marketplace for cards held in the user's own wallet, priced in something spendable. The fee is removed from Crystal trades entirely (ADR-024, amended) rather than left in place as a placeholder.
+
+**Reason**: the previous arrangement charged a fee in a currency that cannot leave the system, so the fee was a cost to sellers and nothing to the platform. Keeping it "for later" would have meant charging real users for a revenue line that could not arrive, and the pitch material had already started describing it as income.
+
+**The shape this would take**, recorded so the gap is visible rather than assumed away:
+
+A seller exports the card to their own Privy wallet (ADR-031), then lists it on a Gachard-run marketplace. The fee is taken by the contract that performs the sale.
+
+**What is missing, and it is the whole thing:** there is no such contract. `marketplaceTransfer()` is `onlyOwner` and moves a card between two custodial addresses — it works because Gachard holds the token. Once a card is in a user's own wallet, Gachard has no authority over it at all, by design, which is the entire point of ADR-031. Collecting a fee from a sale of a card the platform does not hold requires either escrow (the seller deposits the card, the contract releases it to the buyer and keeps a cut) or an approval-based model (the seller approves the marketplace contract, which transfers on a matched order). Both are new Solidity, new audits' worth of risk, and a new deployment.
+
+**Three consequences that have to be accepted, not discovered later:**
+
+**The fee cannot be in Crystal.** A fee that the platform can spend has to be in something the platform can spend — MON, a stablecoin, or fiat off-chain. That is the step ADR-026 deliberately avoided: it opens money-transmission and securities questions that were sidestepped precisely by making Crystal unpurchasable and unredeemable. This is not a technical decision dressed as a legal one; it is a legal decision that happens to need code.
+
+**It competes with the custodial marketplace, which is free.** Today's Crystal marketplace charges nothing and needs no export, no wallet and no signature. A self-custody marketplace that charges a fee is strictly more friction for the seller. It needs a reason to exist beyond the fee — real payment, real liquidity, cards that can leave — or sellers will simply use the free one.
+
+**It reopens the metadata question.** ADR-033 leaves `uri()` empty partly so that nothing outside Gachard renders a card. A Gachard-run marketplace for self-custodied cards is still Gachard, so it can render them from its own database without any on-chain metadata, and ADR-033 holds. But if the intent ever becomes *external* liquidity, that requires metadata, and the two ADRs then genuinely conflict. Read them together before choosing.
+
+**Not decided here**: whether to build this at all. Pack sales and the flat print fee are the revenue lines that exist. This ADR exists so that "the marketplace fee" has one honest location instead of being quietly true in the code and loudly wrong in the pitch.

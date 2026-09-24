@@ -9,8 +9,6 @@ import { marketplaceTransfer, waitForReceipt, recordVerification } from "@/lib/b
 import { calculateTradeSignals } from "@/lib/fraud-signals";
 import { calculateRiskScore } from "@/lib/risk-score";
 
-const MARKETPLACE_FEE_PERCENT = 8;
-
 export const maxDuration = 15;
 
 export async function POST(
@@ -174,15 +172,23 @@ export async function POST(
         }
       );
 
-      const sellerProceeds = Math.round(listing.price * (1 - MARKETPLACE_FEE_PERCENT / 100));
-      await addCrystal(listing.sellerId, sellerProceeds);
+      // The seller receives the whole price. There is no fee on a Crystal
+      // trade any more (ADR-024, amended): 8% was deducted here and credited
+      // nowhere — not to a treasury, not to an account, it simply was not paid
+      // out — and Crystal cannot be bought or cashed out (ADR-026), so it
+      // could never become revenue. It cost sellers 8% of every sale and
+      // earned the platform nothing.
+      //
+      // The fee belongs where a fee can actually be collected: a marketplace
+      // for cards the user holds in their own wallet, priced in something
+      // spendable. That is ADR-034, and it is not built.
+      await addCrystal(listing.sellerId, listing.price);
 
       return NextResponse.json({
         success: true,
         txHash,
         status: "confirmed",
-        sellerProceeds,
-        fee: listing.price - sellerProceeds,
+        sellerProceeds: listing.price,
       });
     } else {
       // NOT confirmed yet — set card to "pending transfer" state

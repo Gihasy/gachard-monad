@@ -334,7 +334,7 @@ gachard-monad/
 ├── docs/              # Documentation
 ├── scripts/           # Deployment scripts
 ├── MEMORY.md          # Project status & working notes (not published)
-├── DECISIONS.md       # Architecture decisions, 33 ADRs and their amendments
+├── DECISIONS.md       # Architecture decisions, 34 ADRs and their amendments
 ```
 
 ## Deployment
