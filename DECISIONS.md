@@ -427,3 +427,35 @@ The test this has to pass is therefore not "is it cheaper than the free tier" bu
 **It reopens the metadata question.** ADR-033 leaves `uri()` empty partly so that nothing outside Gachard renders a card. A Gachard-run marketplace for self-custodied cards is still Gachard, so it can render them from its own database without any on-chain metadata, and ADR-033 holds. But if the intent ever becomes *external* liquidity, that requires metadata, and the two ADRs then genuinely conflict. Read them together before choosing.
 
 **Not decided here**: whether to build this at all. Pack sales and the flat print fee are the revenue lines that exist. This ADR exists so that "the marketplace fee" has one honest location instead of being quietly true in the code and loudly wrong in the pitch.
+
+## ADR-035: A Cosmetics Store Is the Intended Crystal Sink
+
+**Status**: Proposed, 25 September 2026. **Nothing in this ADR exists in code.**
+
+**Decision**: when Crystal needs a sink, it is a Gachard-run store selling **cosmetic items** — card frames, display cases, profile decoration — and nothing else. Not cards, not packs, and nothing that touches odds or gameplay.
+
+**Reason**: removing the marketplace fee (ADR-024, amended) left Crystal with no sink at all. Dismantling creates it; trading only moves it between users, because every listing is created by the card's owner and Gachard is never the seller. So the pool only grows.
+
+A store is the right shape of sink because it is **chosen, not charged**. The fee it replaces was a tax on the one activity the marketplace exists to encourage, and worse, a tax on the compensation for a bad pack. A store takes Crystal only from someone who decided they wanted something more than they wanted the Crystal.
+
+It also gives Crystal a second use. Today a duplicate is only worth something if another player happens to be selling a card you want; the value of dismantling is hostage to the state of one market. A store makes Crystal useful on its own.
+
+**Why cosmetics specifically, and not the tempting alternatives:**
+
+**Not cards.** Gachard selling cards for Crystal would make the platform a seller in its own peer-to-peer market, which is exactly what the marketplace is not (ADR-024). It would also mint cards out of Crystal, so dismantling would stop being a net card sink and the two pools would decouple.
+
+**Not packs.** Packs are bought with Credits, which is the main revenue line. Selling them for a currency earned by destroying cards would cannibalise it in the one place the business actually earns.
+
+**Nothing that affects odds or play.** A currency earned by destroying your collection must never buy an advantage, or the game quietly pressures people to dismantle cards they wanted to keep.
+
+**Consequences that have to be accepted, not discovered:**
+
+**The store sets a price floor for Crystal.** Once a frame costs 800 Crystal, that number anchors what Crystal is worth, and the card market prices itself against that anchor. Pricing the store is an economic decision with effects outside the store, not a design detail to be settled by whoever builds it.
+
+**It costs real money and earns none.** Cosmetics need artwork, and the artwork is paid for in cash to create demand for a currency that cannot be cashed out. The return is retention and a duplicate loop that stays meaningful — real, but indirect. Anyone proposing this as revenue has misread it.
+
+**A good store makes people dismantle more.** That is the point and also the risk: dismantling is a card sink, so an attractive store accelerates the destruction of cards, including ones their owners would otherwise have kept. Watch the dismantle rate after launch rather than assuming the effect is small. If collectors start stripping their collections for frames, the store is priced wrong.
+
+**Cosmetics stay off-chain.** They are display, not property. Keeping them out of the contract avoids the metadata question entirely (ADR-033) and keeps them cheap to add, change and retire — which is what a cosmetics catalogue needs and what a token is bad at.
+
+**Not decided here**: whether a sink is needed yet. With the database clean-slated there is nothing accumulated to drain. This ADR exists so the shape of the answer is settled before there are thousands of users holding large balances, because adding a sink later reads as confiscation to everyone who is already rich.
