@@ -337,11 +337,21 @@ Verified after the rename, not assumed: all 46 checks in `scripts/suite-api.ts` 
 
 **Decision**: `GachardCard` returns an empty `uri()` for every token, and no metadata endpoint exists in the app. A Gachard card renders as an unnamed, imageless item in any wallet or marketplace outside Gachard. This is a decision, not an unbuilt feature.
 
-**Reason**: two, and only two.
+**Reason**: three.
 
 **Nothing outside Gachard can render a card, so trading comes back to Gachard.** A card whose artwork, name and rarity are invisible is a card nobody bids on elsewhere. This is what makes a marketplace fee collectable at all: not a rule, just the absence of a reason to go anywhere else.
 
 **It is not needed yet.** OpenSea does not index Monad Testnet, so on the chain this project runs on, no external surface would render these tokens regardless of what `uri()` returned.
+
+**It keeps the anti-impersonation rule categorical.** Fake collections built from stolen artwork are the standard scam on open marketplaces, and this product's stated audience — collectors who are not crypto people (ADR-002) — is the population least equipped to spot one. With no official collection anywhere outside Gachard, the rule a new user has to learn is one sentence with no exceptions: *Gachard cards only exist in Gachard; anything that looks like one elsewhere is fake.* Compare that with what the alternative asks of them — check the verified badge, match the contract address, compare item counts and deploy dates — which is precisely the competence this product exists to not require. It is the same shape as "we will never email you asking for your password", and it is strong for the same reason: no exceptions to reason about.
+
+Two things must be said plainly alongside it, or this reason will be misremembered as something it is not.
+
+**It does not protect the artwork.** The images are public and have to be — a card game whose players cannot see their cards is not a product. `frontend/public/cards/*.webp` is served directly, `/api/cards` returns `artworkUrl`, and this was verified against production with no credentials: `GET /_next/image?url=/cards/common-1.webp&w=640` returns 200 and 39,721 bytes of AVIF. Anyone minting a counterfeit collection downloads the art from the website in seconds; an empty `uri()` raises the cost of that by nothing. Do not write, or say, that empty metadata prevents art theft. It is disprovable in ten seconds and it would take every other claim down with it.
+
+**It cedes the search results.** Because the genuine collection is absent from external marketplaces, the only Gachard-looking tokens there are the counterfeits — with no official collection beside them to compare against, no verified badge, and nothing authentic ranking above them. A verified official presence is itself one of the standard defences against impersonation, and this decision forgoes it. The bet is that a rule with no exceptions protects a non-crypto user better than a badge they have to know to look for. That bet is defensible; it is still a bet, and this is the cost side of it.
+
+What actually raises the cost for an impersonator is elsewhere, and should be built rather than assumed: the physical card, which no counterfeiter can print and post; the contract address as the one identity anchor that cannot be forged, already verified on Sourcify and already published; and a verification surface that makes the categorical rule checkable rather than merely asserted — `/scan` already exists for cards, and extending it to answer "is this collection ours?" is small work for a large gain.
 
 **The reason this is NOT**: preserving the ability to fix or update artwork. That reasoning was considered and is wrong, and it is written down here because it is the plausible-sounding explanation a future reader would otherwise invent.
 
@@ -360,10 +370,16 @@ So the current state is the *least* flexible option available, which is the reve
 
 **Consequence, what this does and does not stop**: it stops display, not transfer. An exported card is `Digital` on chain, and `_update()` only blocks transfers while `Vaulted`, so its holder can list and transfer it anywhere they like — it simply renders blank. The honest sentence is "nobody buys a blank square", not "it cannot be sold elsewhere". Do not claim the stronger one.
 
-**Consequence, this is a weak moat and should not be pitched as the moat**: it is built by making the product worse for the person who owns the card. Collectors want their cards to show up in their wallet; that is part of owning one. A moat that depends on withholding something people want loses to the first competitor who gives it to them. The durable moat here is the physical card — no marketplace can print one and post it — and that is what the pitch should lead with. This ADR is a note about a side door, not the front one.
+**Consequence, the three reasons are not equally strong, and the pitch should not treat them as one thing.**
+
+The *commercial* reason — trading comes back to Gachard because nothing renders elsewhere — is the weak one, and should not be pitched as the moat. It works by withholding something the card's owner wants: collectors like seeing their cards in their wallet, and that is part of owning one. A moat that depends on withholding loses to the first competitor who stops withholding. The durable commercial moat is the physical card, which no marketplace can print and post, and that is what a pitch should lead with.
+
+The *safety* reason stands on different ground and does not depend on the commercial one being true. It is not about keeping value in; it is about keeping a rule simple for someone who cannot evaluate a badge. It would still be worth something even if the fee were abolished tomorrow, and it survives the objection above because a user who is spared a counterfeit has not been withheld from — they have been protected from a thing they could not have spotted.
+
+Keep them separate when speaking. Collapsing them into "we hide the metadata so people trade with us" throws away the reason that is actually defensible.
 
 **Consequence, for whoever deploys the next contract**: include a `setURI(string)` guarded by `onlyOwner` and a `uri()` override built from it. That keeps both the metadata *and* its location changeable, which is what flexibility actually looks like. Leaving the constructor argument empty and adding no setter, as here, keeps neither.
 
-**Do not "fix" this.** An empty `uri()` reads like an oversight, and adding `app/api/metadata/[tokenId]` is half an hour's work that looks like an obvious improvement. It would dissolve the first reason above. If that trade is worth making later, amend this ADR; do not make it by accident while tidying.
+**Do not "fix" this.** An empty `uri()` reads like an oversight, and adding `app/api/metadata/[tokenId]` is half an hour's work that looks like an obvious improvement. It would dissolve the first reason and the third at once — the fee stops being collectable, and the one-sentence rule a non-crypto user relies on acquires an exception. If that trade is worth making later, amend this ADR; do not make it by accident while tidying.
 
 **Related**: the marketplace model where a card is exported to the user's own wallet before sale cannot collect a fee today — `marketplaceTransfer()` is `onlyOwner` and works only on custodial cards. A fee on a card Gachard does not hold needs an on-chain marketplace contract that does not exist. That is a separate decision and has not been made.
