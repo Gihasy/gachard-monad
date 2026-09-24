@@ -86,4 +86,7 @@ sessions/
 !frontend/.env.local.example
 
 # Pitch preparation — strategy notes and candid weaknesses, not for the public repo.
+# This repo is public, and git history cannot be truly undone, so these stay out
+# of it rather than being removed later.
 docs/PITCH-PREP.md
+docs/INTERVIEW-PREP-YC-ALLIANCE.md
