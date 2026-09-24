@@ -20,7 +20,7 @@ That is the default, not the ceiling. A user who wants custody of their own card
 
 ### Marketplace
 - **Public browsing**: Users can view listings without login
-- **Trade**: Buy/sell cards between users with Crystal currency
+- **Trade**: Buy/sell cards between users with Crystal currency, with **no marketplace fee**. Crystal exists only because someone dismantled a duplicate, so the market is where an unwanted card becomes a wanted one; a fee there would tax the recovery from a bad pull. A paid tier requiring self-custody export is recorded as a plan (ADR-034) and is not built
 - **FVM (Fair Value Model)**: Fair-value pricing computed from sales history (deterministic, not AI), with an optional MiMo-generated listing-price suggestion layered on top
 - **Wishlist & Cart**: Standard e-commerce UX for marketplace
 
@@ -43,7 +43,7 @@ That is the default, not the ceiling. A user who wants custody of their own card
 - **Tests:** 78/78 passed (Foundry), 58 GachardCard + 20 PackEntropy, covering mint, print, redeem, transfer, burn, verification, access control and the entropy flow
 
 ### API and Logic Tests
-`npx tsx frontend/scripts/suite-api.ts` — **68 checks**, all passing, over authentication boundaries, what the public marketplace and public admin endpoints are allowed to return, logout, redeem, the EIP-712 batch signature, rate limits, chain reconciliation, Privy binding, released cards and the payloads a QR scanner actually produces. It builds its own fixture, deletes it, and reports what it left behind.
+`npx tsx frontend/scripts/suite-api.ts` — **77 checks**, all passing, over authentication boundaries, what the public marketplace and public admin endpoints are allowed to return, logout, redeem, the EIP-712 batch signature, rate limits, chain reconciliation, Privy binding, marketplace purchases whose receipt arrives late, released cards and the payloads a QR scanner actually produces. It builds its own fixture, deletes it, and reports what it left behind.
 
 ### Nonce Manager
 Implemented `acquireNonce()` in `blockchain.ts` with lock mechanism to handle concurrent transactions. This prevents "existing transaction had higher priority" errors when multiple users buy packs simultaneously, a critical feature for real-time TCG gameplay.

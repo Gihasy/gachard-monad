@@ -169,6 +169,16 @@ The fee itself is not abandoned. It moves to where a fee can actually be collect
 
 **Free is the design, not a gap.** Trading in Crystal costs nothing and requires nothing: no export, no wallet, no signature, no gas. That is what the everyday collector gets, and it is deliberately the cheapest path in the product. The fee lives one tier up, on the marketplace that requires exporting to a self-custody wallet (ADR-034), where the thing being bought is real liquidity rather than an in-app swap. The two tiers differ in what they offer and therefore in what they cost — a free tier is only a weakness if the paid tier is the same product with a toll on it.
 
+**And there is a reason a fee here would be worse than merely unprofitable: it would tax the consolation prize.**
+
+Opening packs produces duplicates. That is not a flaw in the odds, it is what pack-opening *is*, and it is the moment a collector is most likely to feel they wasted their money. Dismantling is the answer to that moment — and it is the **only** way Crystal is created. Nothing else mints it: not top-ups, not rewards, not purchases. `addCrystal` is called on a dismantle, and everywhere else it only moves Crystal that already exists between users or returns it to whoever paid.
+
+So the loop is closed and deliberate: the card you did not want becomes the currency for the card you did. A duplicate stops being a loss and becomes progress toward a specific target.
+
+Charging 8% on the spend end of that loop taxes the recovery from a bad pull. The user has already been disappointed once; the platform then takes a cut of the compensation, in a currency it cannot spend. Even at a fee that produced real revenue, this would be the wrong place to take it — it is a toll on the mechanism that makes an unlucky pack survivable.
+
+**This is what keeps the free tier genuinely free.** ADR-034 warns that the ladder collapses if an in-app Crystal swap ever carries a fee. This is the concrete reason: it would not just blur two tiers, it would charge people for recovering from the randomness the product sells them.
+
 **Consequence, the Crystal supply now only grows.** This 8% was the only sink in the app: dismantling creates Crystal (ADR-026), marketplace purchases move it between users, and nothing else destroyed any. Removing it means total Crystal rises with every dismantle and never falls. That is not a financial risk — Crystal is not purchasable and not redeemable, so there is nothing to be devalued in money terms — but listing prices will drift upward over time, and early dismantlers accumulate an advantage that never dilutes. If a sink is wanted later it should be something users choose to spend on, not a tax on the one action the marketplace exists to encourage.
 
 ## ADR-025: AI Anomaly Detection Oracle for Trade

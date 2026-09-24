@@ -234,7 +234,7 @@ stateDiagram-v2
 - **Unique Card ID**: Each card has a unique hex ID (e.g. `#8a866`)
 - **Invoice ID**: Each transaction has an Invoice ID (e.g. `GC-20260730-a3f1`)
 - **Admin Console**: Manage users, transactions, cards, print requests, monitor MON balances. Every tab has search, filters and sorting matched to what that tab is for. Readable without an account so the print-to-approval flow can be followed, but the people in that flow are not public: personal fields are withheld until an admin signs in, and state-changing routes need credentials
-- **Trade Marketplace**: Buy/sell cards between users with FVM pricing
+- **Trade Marketplace**: Buy/sell cards between users with FVM pricing. **No fee** — dismantling a duplicate is the only source of Crystal, so the market is where an unwanted card becomes the one you wanted, and taking a cut there would tax the recovery from a bad pull (ADR-024)
 - **Dismantle & Crystal**: Burn cards to earn Crystal currency
 - **AI Anomaly Detection**: Wash-trading detection on marketplace
 - **Support Gachard**: Floating CTA for early supporters, shown on the homepage only
@@ -409,9 +409,10 @@ All blockchain transactions are verifiable on Monad Explorer:
 cd frontend && npx tsx scripts/suite-api.ts    # needs a server running
 ```
 
-68 checks over authentication boundaries, the public marketplace response, the
+77 checks over authentication boundaries, the public marketplace response, the
 public admin tier, logout, redeem, the EIP-712 batch signature, rate limits,
-reconciliation, Privy binding, released cards and scanned QR payloads. It
+reconciliation, Privy binding, stuck marketplace purchases, released cards and
+scanned QR payloads. It
 builds its own fixture, deletes it, and prints what it left behind.
 
 ## Smart Contract Tests
