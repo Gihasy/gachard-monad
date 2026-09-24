@@ -161,6 +161,8 @@ Cards follow the normal odds table. Guaranteed slots are Rare/Epic/Legendary wit
 **Decision**: Implement full marketplace with listing, buying, cancelling. Cards listed via `isListed` flag (MongoDB) + `marketplaceTransfer()` on-chain. Marketplace fee 8%. FVM (Fair Value Market) calculates average sold price per template. AI-powered market insight and price suggestion via LLM (provider is MiMo, see ADR-030; this line previously said Gemini API). Print blocked while card is listed.
 **Reason**: Enhances demo value for the hackathon. Shows full card lifecycle: mint → collect → trade → print → redeem. Blockchain abstraction is maintained: users see Credit prices, not crypto.
 
+**Clarification, 25 September 2026: the 8% is charged in Crystal, and it is a sink.** `MARKETPLACE_FEE_PERCENT = 8` in `api/marketplace/listings/[id]/buy` deducts the fee, but the deduction is never credited anywhere — it is simply not paid to the seller. Crystal cannot be bought, topped up, transferred or cashed out (ADR-026), so this line produces no money. It was described as a revenue source in `docs/PITCH-PREP.md` until today; that wording is corrected there. Nothing about the decision changes — only the sentence that kept being read off it.
+
 ## ADR-025: AI Anomaly Detection Oracle for Trade
 **Status**: Accepted
 **Decision**: Detect wash-trading patterns in marketplace transactions using an Oracle approach:
@@ -328,3 +330,40 @@ Next 16 deprecated the `middleware` file convention and renamed it to `proxy`, a
 One thing is genuinely different, and it is a constraint on whatever is added next: a proxy always runs on the **Node.js runtime**, and setting the `runtime` config option in that file throws. The old file ran on Edge, which is why the HMAC is verified with Web Crypto and the Basic header decoded with `atob` rather than `Buffer`. Both work on Node, so nothing needed rewriting, but the Edge constraint that shaped this code is no longer the reason it looks the way it does.
 
 Verified after the rename, not assumed: all 46 checks in `scripts/suite-api.ts` pass, the three admin tiers still answer 200 / 401 / 401 as before, and `POST /api/admin/unlock` still reaches its own handler rather than being refused by the gate — without that exemption nothing could ever be unlocked.
+
+## ADR-033: Token Metadata Is Left Empty, Deliberately
+
+**Status**: Accepted, 25 September 2026
+
+**Decision**: `GachardCard` returns an empty `uri()` for every token, and no metadata endpoint exists in the app. A Gachard card renders as an unnamed, imageless item in any wallet or marketplace outside Gachard. This is a decision, not an unbuilt feature.
+
+**Reason**: two, and only two.
+
+**Nothing outside Gachard can render a card, so trading comes back to Gachard.** A card whose artwork, name and rarity are invisible is a card nobody bids on elsewhere. This is what makes a marketplace fee collectable at all: not a rule, just the absence of a reason to go anywhere else.
+
+**It is not needed yet.** OpenSea does not index Monad Testnet, so on the chain this project runs on, no external surface would render these tokens regardless of what `uri()` returned.
+
+**The reason this is NOT**: preserving the ability to fix or update artwork. That reasoning was considered and is wrong, and it is written down here because it is the plausible-sounding explanation a future reader would otherwise invent.
+
+What a contract stores is the *address*, not the image:
+
+```
+contract  →  "https://gachard.com/api/metadata/{id}"
+that URL  →  { "name": "...", "image": "https://gachard.com/cards/legendary-1.webp" }
+```
+
+Only the first line is on chain. The JSON is served by our own server, so artwork changes by replacing a file — no transaction, no gas, no redeploy. The arrangement that genuinely locks artwork is an IPFS content hash (`ipfs://Qm…`), where changing a pixel changes the address. Projects choose that deliberately, to prove the art cannot change. Our need is the opposite, so if a URI is ever set it points at our own HTTPS endpoint, never at a content hash.
+
+**Consequence, and it is the sharp one**: this is not reversible on the deployed contract. `constructor() ERC1155("") Ownable(msg.sender) {}` — there is no `setURI`, no `uri()` override, no base URI anywhere in `GachardCard.sol`. The URI is permanently the empty string. Changing this costs a new contract, and one dead contract (`0x712b70…`, ADR-026) is already the price of a previous migration.
+
+So the current state is the *least* flexible option available, which is the reverse of what "keep our options open" would have produced.
+
+**Consequence, what this does and does not stop**: it stops display, not transfer. An exported card is `Digital` on chain, and `_update()` only blocks transfers while `Vaulted`, so its holder can list and transfer it anywhere they like — it simply renders blank. The honest sentence is "nobody buys a blank square", not "it cannot be sold elsewhere". Do not claim the stronger one.
+
+**Consequence, this is a weak moat and should not be pitched as the moat**: it is built by making the product worse for the person who owns the card. Collectors want their cards to show up in their wallet; that is part of owning one. A moat that depends on withholding something people want loses to the first competitor who gives it to them. The durable moat here is the physical card — no marketplace can print one and post it — and that is what the pitch should lead with. This ADR is a note about a side door, not the front one.
+
+**Consequence, for whoever deploys the next contract**: include a `setURI(string)` guarded by `onlyOwner` and a `uri()` override built from it. That keeps both the metadata *and* its location changeable, which is what flexibility actually looks like. Leaving the constructor argument empty and adding no setter, as here, keeps neither.
+
+**Do not "fix" this.** An empty `uri()` reads like an oversight, and adding `app/api/metadata/[tokenId]` is half an hour's work that looks like an obvious improvement. It would dissolve the first reason above. If that trade is worth making later, amend this ADR; do not make it by accident while tidying.
+
+**Related**: the marketplace model where a card is exported to the user's own wallet before sale cannot collect a fee today — `marketplaceTransfer()` is `onlyOwner` and works only on custodial cards. A fee on a card Gachard does not hold needs an on-chain marketplace contract that does not exist. That is a separate decision and has not been made.
