@@ -167,6 +167,8 @@ The fee deducted 8% and credited it nowhere — not to a treasury, not to an acc
 
 The fee itself is not abandoned. It moves to where a fee can actually be collected, which is ADR-034, and which is not built.
 
+**Free is the design, not a gap.** Trading in Crystal costs nothing and requires nothing: no export, no wallet, no signature, no gas. That is what the everyday collector gets, and it is deliberately the cheapest path in the product. The fee lives one tier up, on the marketplace that requires exporting to a self-custody wallet (ADR-034), where the thing being bought is real liquidity rather than an in-app swap. The two tiers differ in what they offer and therefore in what they cost — a free tier is only a weakness if the paid tier is the same product with a toll on it.
+
 **Consequence, the Crystal supply now only grows.** This 8% was the only sink in the app: dismantling creates Crystal (ADR-026), marketplace purchases move it between users, and nothing else destroyed any. Removing it means total Crystal rises with every dismantle and never falls. That is not a financial risk — Crystal is not purchasable and not redeemable, so there is nothing to be devalued in money terms — but listing prices will drift upward over time, and early dismantlers accumulate an advantage that never dilutes. If a sink is wanted later it should be something users choose to spend on, not a tax on the one action the marketplace exists to encourage.
 
 ## ADR-025: AI Anomaly Detection Oracle for Trade
@@ -408,7 +410,9 @@ A seller exports the card to their own Privy wallet (ADR-031), then lists it on 
 
 **The fee cannot be in Crystal.** A fee that the platform can spend has to be in something the platform can spend — MON, a stablecoin, or fiat off-chain. That is the step ADR-026 deliberately avoided: it opens money-transmission and securities questions that were sidestepped precisely by making Crystal unpurchasable and unredeemable. This is not a technical decision dressed as a legal one; it is a legal decision that happens to need code.
 
-**It competes with the custodial marketplace, which is free.** Today's Crystal marketplace charges nothing and needs no export, no wallet and no signature. A self-custody marketplace that charges a fee is strictly more friction for the seller. It needs a reason to exist beyond the fee — real payment, real liquidity, cards that can leave — or sellers will simply use the free one.
+**It sits above the free tier, and that laddering is the point.** The Crystal marketplace charges nothing and needs no export, no wallet and no signature (ADR-024, amended). This one charges a fee and requires all three. That is not the same product with a toll added: what the seller buys with the friction is real liquidity — a buyer paying in something spendable, and a card that can leave Gachard entirely.
+
+The test this has to pass is therefore not "is it cheaper than the free tier" but "is what it adds worth exporting for". If the answer is ever no, the fee is not the problem and lowering it will not help; the tier has nothing to sell. Keep the free tier genuinely free for that reason — the moment an in-app Crystal swap carries a fee, the ladder collapses into one grudging product with two prices.
 
 **It reopens the metadata question.** ADR-033 leaves `uri()` empty partly so that nothing outside Gachard renders a card. A Gachard-run marketplace for self-custodied cards is still Gachard, so it can render them from its own database without any on-chain metadata, and ADR-033 holds. But if the intent ever becomes *external* liquidity, that requires metadata, and the two ADRs then genuinely conflict. Read them together before choosing.
 

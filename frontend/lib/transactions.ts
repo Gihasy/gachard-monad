@@ -1,5 +1,6 @@
 import { getCollection } from "./mongodb";
-import { ObjectId } from "mongodb";
+import { addCrystal } from "./crystal";
+import { ObjectId, type Collection, type Db, type Document } from "mongodb";
 import { getProvider } from "./blockchain";
 import { ethers } from "ethers";
 import { generateInvoiceId } from "./invoice";
@@ -109,6 +110,123 @@ export async function getTransactionStatus(txId: string) {
  * Check on-chain receipt and update transaction status.
  * Handles mint (batch), print, and redeem events.
  */
+/**
+ * Finish a marketplace purchase whose receipt arrived too late.
+ *
+ * `api/marketplace/listings/[id]/buy` waits about three seconds for the
+ * receipt. If it does not arrive it stores `pendingBuyerId`,
+ * `pendingBuyerWallet`, `pendingSellerId`, `pendingListingPrice` and
+ * `pendingTxHash` on the card — and nothing in the codebase ever read any of
+ * them. The transfer had been submitted by the admin wallet and almost always
+ * landed, so the chain was right and the database was permanently wrong: the
+ * buyer's Crystal was spent, the card still belonged to the seller, and the
+ * seller was never paid.
+ *
+ * Worse, `confirmTransaction` had no `sold` branch, so the sweep in
+ * /api/cards would read the receipt and mark the row **confirmed** while none
+ * of that was repaired. A ledger that says a sale completed when the card and
+ * the money both disagree is worse than one that admits it is pending.
+ *
+ * **Exactly once, and that is the whole difficulty.** This runs from
+ * /api/cards on every page load. Paying the seller twice would create Crystal
+ * out of nothing. The card's pending fields are the latch: one conditional
+ * update both claims them and clears them, and only the caller that won that
+ * update pays out. A second call matches nothing and does nothing.
+ */
+// Exported for scripts/suite-api.ts. Reaching these through
+// confirmTransaction would need a real confirmed receipt, and the property
+// worth testing is not the dispatch — it is that a second call pays nobody a
+// second time. That is worth a slightly wider surface.
+export async function settleMarketplacePurchase(
+  cardsCollection: Collection<Document>,
+  tx: Document
+) {
+  const tokenId = typeof tx.tokenId === "number" ? tx.tokenId : null;
+  if (tokenId === null) return;
+
+  const claimed = await cardsCollection.findOneAndUpdate(
+    { tokenId, pendingSellerId: { $exists: true } },
+    {
+      $set: {
+        ownerAddress: tx.toAddress,
+        status: "Digital",
+        isListed: false,
+        lastOnChainSync: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      $unset: {
+        pendingBuyerId: "",
+        pendingBuyerWallet: "",
+        pendingSellerId: "",
+        pendingListingPrice: "",
+        pendingTxHash: "",
+        listingId: "",
+      },
+    },
+    { returnDocument: "before" }
+  );
+
+  if (!claimed) return;
+
+  const sellerId = claimed.pendingSellerId;
+  const price = claimed.pendingListingPrice;
+  if (typeof sellerId === "string" && typeof price === "number" && price > 0) {
+    // The whole price. There is no fee on a Crystal trade (ADR-024, amended),
+    // and this path must agree with the confirmed path or the amount a seller
+    // receives would depend on how fast the network was.
+    await addCrystal(sellerId, price);
+  }
+}
+
+/**
+ * Undo a marketplace purchase whose transfer reverted on chain.
+ *
+ * The buy route refunds only when submitting throws. A transaction that is
+ * accepted and then fails took the buyer's Crystal with it and left the card
+ * in "pending" for good. Same latch, same exactly-once reasoning.
+ */
+/** Exported for the suite, for the same reason as above. */
+export async function unwindMarketplacePurchase(
+  db: Db,
+  cardsCollection: Collection<Document>,
+  tx: Document
+) {
+  const tokenId = typeof tx.tokenId === "number" ? tx.tokenId : null;
+  if (tokenId === null) return;
+
+  const claimed = await cardsCollection.findOneAndUpdate(
+    { tokenId, pendingSellerId: { $exists: true } },
+    {
+      $set: { status: "Digital", isListed: false, updatedAt: new Date().toISOString() },
+      $unset: {
+        pendingBuyerId: "",
+        pendingBuyerWallet: "",
+        pendingSellerId: "",
+        pendingListingPrice: "",
+        pendingTxHash: "",
+      },
+    },
+    { returnDocument: "before" }
+  );
+
+  if (!claimed) return;
+
+  const buyerId = claimed.pendingBuyerId;
+  const price = claimed.pendingListingPrice;
+  if (typeof buyerId === "string" && typeof price === "number" && price > 0) {
+    await addCrystal(buyerId, price);
+  }
+
+  // Put the listing back so the card is sellable again. The seller never lost
+  // ownership — ownerAddress was left alone on this path — so reactivating is
+  // the honest end state rather than inventing a cancellation.
+  const listings = db.collection("listings");
+  await listings.updateOne(
+    { cardId: claimed.cardId, status: "sold" },
+    { $set: { status: "active" }, $unset: { buyerId: "", soldAt: "" } }
+  );
+}
+
 export async function confirmTransaction(txId: string): Promise<TxStatus> {
   const collection = await getCollection("transactions");
   const tx = await collection.findOne({ _id: new ObjectId(txId) });
@@ -225,7 +343,18 @@ export async function confirmTransaction(txId: string): Promise<TxStatus> {
             }
           }
         }
+      } else if (tx.type === "sold") {
+        await settleMarketplacePurchase(cardsCollection, tx);
       }
+    }
+
+    // A marketplace purchase whose transfer reverted. Without this the buyer's
+    // Crystal is gone and the card belongs to nobody in particular: the buy
+    // route only refunds when the submission itself throws, not when the
+    // transaction lands and fails.
+    if (newStatus === "failed" && tx.type === "sold") {
+      const cardsCollection = await collection.db.collection("cards");
+      await unwindMarketplacePurchase(collection.db, cardsCollection, tx);
     }
 
     await collection.updateOne(

@@ -39,6 +39,9 @@ function group(title: string) { results.push(`\n${title}`); }
   const { checkRateLimit } = await import("../lib/rate-limit");
   const { reconcileExportedCards, reconcileStuckTransfers } = await import("../lib/privy-reconcile");
   const { parseScannedCode } = await import("../lib/scan-code");
+  const { settleMarketplacePurchase, unwindMarketplacePurchase } =
+    await import("../lib/transactions");
+  const { getCrystalBalance } = await import("../lib/crystal");
 
   const client = new MongoClient(process.env.MONGODB_URL!);
   await client.connect();
@@ -250,6 +253,70 @@ function group(title: string) { results.push(`\n${title}`); }
   // ================= J. removed surfaces =================
   group("J. Removed surfaces");
   check("the advanced-access endpoint is gone", (await get("/api/user/advanced", session)).status === 404);
+
+  // ================= I2. a stuck marketplace purchase =================
+  // The buy route waits about three seconds for the receipt. If it does not
+  // arrive it writes five pending* fields on the card — and nothing read any
+  // of them, so the buyer's Crystal was spent, the card stayed with the
+  // seller, and the seller was never paid. The sweep in /api/cards even marked
+  // the row confirmed while none of that was repaired.
+  //
+  // The property that matters is exactly-once. This settlement runs on every
+  // page load, and paying a seller twice would create Crystal from nothing.
+  group("I2. Stuck marketplace purchase");
+
+  const sellerId = new ObjectId().toString();
+  const buyerId = new ObjectId().toString();
+  const PRICE = 500;
+  const stuckToken = 970010;
+
+  const makeStuck = async () => {
+    await db.collection("cards").deleteMany({ tokenId: stuckToken });
+    await db.collection("cards").insertOne({
+      cardId: "suite-stuck", tokenId: stuckToken, templateId: tpl[0].templateId,
+      rarity: 0, ownerAddress: OWNER, status: "pending", isListed: false,
+      listingId: "suite-l2", fulfillmentStatus: null, viewed: true, createdAt: now,
+      pendingBuyerId: buyerId, pendingBuyerWallet: "0x00000000000000000000000000000000000000bb",
+      pendingSellerId: sellerId, pendingListingPrice: PRICE, pendingTxHash: "0xdeadbeef",
+    });
+    await db.collection("crystal_balances").deleteMany({ userId: { $in: [sellerId, buyerId] } });
+  };
+
+  const cardsCol = db.collection("cards");
+  const soldTx = { tokenId: stuckToken, toAddress: "0x00000000000000000000000000000000000000bb" };
+
+  await makeStuck();
+  await settleMarketplacePurchase(cardsCol as never, soldTx as never);
+  const afterOne = await cardsCol.findOne({ tokenId: stuckToken });
+  check("the card moves to the buyer", afterOne?.ownerAddress === soldTx.toAddress, String(afterOne?.ownerAddress));
+  check("its status is no longer pending", afterOne?.status === "Digital", String(afterOne?.status));
+  check("the pending fields are cleared", afterOne?.pendingSellerId === undefined);
+  check("the seller is paid the whole price, no fee", (await getCrystalBalance(sellerId)) === PRICE, String(await getCrystalBalance(sellerId)));
+
+  // The point of the latch.
+  await settleMarketplacePurchase(cardsCol as never, soldTx as never);
+  await settleMarketplacePurchase(cardsCol as never, soldTx as never);
+  check("running it again pays nothing more", (await getCrystalBalance(sellerId)) === PRICE, String(await getCrystalBalance(sellerId)));
+
+  // A transfer that landed and reverted: the buyer gets their Crystal back and
+  // the listing is sellable again.
+  await makeStuck();
+  await db.collection("listings").deleteMany({ listingId: "suite-l2" });
+  await db.collection("listings").insertOne({
+    listingId: "suite-l2", cardId: "suite-stuck", tokenId: stuckToken,
+    templateId: tpl[0].templateId, sellerId, sellerWalletAddress: OWNER,
+    price: PRICE, status: "sold", createdAt: now,
+  });
+  await unwindMarketplacePurchase(db as never, cardsCol as never, soldTx as never);
+  check("a reverted transfer refunds the buyer", (await getCrystalBalance(buyerId)) === PRICE, String(await getCrystalBalance(buyerId)));
+  check("it does not pay the seller", (await getCrystalBalance(sellerId)) === 0, String(await getCrystalBalance(sellerId)));
+  check("the listing goes back to active", (await db.collection("listings").findOne({ listingId: "suite-l2" }))?.status === "active");
+  await unwindMarketplacePurchase(db as never, cardsCol as never, soldTx as never);
+  check("unwinding again refunds nothing more", (await getCrystalBalance(buyerId)) === PRICE, String(await getCrystalBalance(buyerId)));
+
+  await db.collection("cards").deleteMany({ tokenId: stuckToken });
+  await db.collection("listings").deleteMany({ listingId: "suite-l2" });
+  await db.collection("crystal_balances").deleteMany({ userId: { $in: [sellerId, buyerId] } });
 
   // ================= J2. the public admin tier =================
   // The console is public so the print flow can be followed without an
