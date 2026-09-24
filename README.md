@@ -305,8 +305,11 @@ deployment-specific notes are in [Deployment → Frontend (Vercel)](#frontend-ve
 - **ADR-030**: MiMo as the single AI provider
 - **ADR-031**: Card export and import via Privy, with server-side sponsored signing
 - **ADR-032**: One identity, the signed session cookie
+- **ADR-033**: Token metadata left empty, deliberately
+- **ADR-034**: The marketplace fee belongs to a self-custody marketplace *(proposed, not built)*
+- **ADR-035**: A cosmetics store as the intended Crystal sink *(proposed, not built)*
 
-The full ADR log is in [`DECISIONS.md`](DECISIONS.md), 32 records covering every
+The full ADR log is in [`DECISIONS.md`](DECISIONS.md), 35 records covering every
 architectural decision, including the ones that were superseded and the known
 limitations of each. The largest decisions also have dedicated specs:
 
@@ -503,6 +506,29 @@ implying completeness.
 off. `useExportWallet` is available on v3.44.0 — the constraint ADR-028
 described is gone — but a revealed key cannot be un-revealed, so it stays
 behind a deliberate flag rather than shipping by default.
+
+### Marketplace Fee and a Crystal Sink (Planned, Not Built)
+
+Trading inside Gachard is free and costs no export, wallet or signature. The
+8% fee that used to be deducted from Crystal sales was removed in September
+2026: it was taken from sellers and credited nowhere, and Crystal cannot be
+bought or cashed out, so it could never have become revenue.
+
+It is not abandoned, it is relocated. **ADR-034** records a marketplace for
+cards held in the user's own wallet, priced in something spendable, where a
+fee can actually be collected — and states plainly that it needs an escrow or
+approval-based contract that does not exist. `marketplaceTransfer()` is
+`onlyOwner` and works only because Gachard holds the token.
+
+Keeping in-app trading free is deliberate rather than a gap. Opening packs
+produces duplicates, dismantling one is the only way Crystal is created, and
+Crystal is what buys the card you actually wanted. Charging there would tax
+the recovery from a bad pull.
+
+That leaves Crystal with no sink at all, and **ADR-035** records the intended
+answer: a cosmetics store. Cosmetics only — selling cards would make Gachard a
+seller inside its own peer-to-peer market, and selling packs would cannibalise
+the main revenue line with a currency earned by destroying cards.
 
 ### AI Vision Verification (Planned)
 
