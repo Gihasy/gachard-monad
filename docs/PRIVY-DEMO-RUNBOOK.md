@@ -25,13 +25,16 @@ Empat momen di Bagian 4 yang menopang seluruh argumen. Sisanya konteks.
 - Modal tanda tangan Privy, dan tanda tangannya diterima server
 - Export: kartu berpindah ke wallet user (token 256)
 - Klaim sponsored dari wallet user, gas dibayar Privy
+- **Transfer ke alamat lain** — dijalankan 22 September 2026 dengan kartu `#092ba` (token 272) ke `0xE9941E…642864`, hash `0x630d24d5…`. Kartunya kemudian dikirim balik ke wallet Privy lewat transfer yang **bukan** dilakukan Gachard, dan Gachard menemukannya dengan membaca saldo di rantai — tidak ada transaction id maupun baris pending untuk mencarinya. Itu beat terkuat yang Anda punya untuk bounty ini.
+- **Marketplace penuh** — 25 September 2026: pack di-mint lewat Pyth entropy, satu kartu dilisting 400 Crystal, dibeli akun kedua, token berpindah di rantai (`0x82e14b2b…`). Pembeli bayar 400, penjual terima 400; **tidak ada fee**.
 
 **Belum pernah dijalankan sungguhan:**
 
-- **Transfer ke alamat lain** (`/wallet`)
 - **Withdraw access**, yaitu pencabutan delegasi
 
-Keduanya dipakai di rekaman. **Coba satu kali sebelum merekam.** Untuk Transfer, pakai alamat yang Anda kendalikan sendiri, karena kartunya benar-benar pergi dan tidak bisa ditarik kembali.
+Itu satu-satunya yang tersisa, dan dipakai di rekaman. **Coba satu kali sebelum merekam.**
+
+Catatan untuk Transfer: kalau Anda mengulanginya saat merekam, pakai alamat yang Anda kendalikan sendiri — kartunya benar-benar pergi. Kembalinya token 272 hanya mungkin karena alamat tujuannya adalah admin wallet Gachard sendiri.
 
 **Reveal private key sudah tidak ada di UI.** Kemampuannya tetap ada di v3.44.0 dan kodenya masih di repo, tapi dimatikan lewat sebuah flag — kunci yang sudah terlihat tidak bisa ditarik kembali. Jangan merencanakan rekaman di sekitarnya, dan jangan mengklaimnya sebagai fitur yang berjalan.
 

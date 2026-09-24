@@ -79,7 +79,7 @@ Stated plainly so nothing here has to be taken on trust:
 | Area | Status |
 |------|--------|
 | Buy pack → reveal → collect | Live on Monad Testnet, provably fair via Pyth Entropy |
-| Marketplace trade, wishlist, cart | Live |
+| Marketplace trade, wishlist, cart | Live, and exercised end to end on 25 September 2026: a pack minted through Pyth entropy, a card listed for 400 Crystal, bought by a second account, the token moving on chain (`0x82e14b2b…`). Buyer paid 400, seller received 400 — there is **no marketplace fee** |
 | Dismantle → Crystal | Live |
 | Print request → vault lock → redeem | Live end-to-end in software; no physical card has been produced and redeemed yet |
 | AI risk scoring + market insight | Code live and wired; requires `MIMO_API_KEY` to be set in the deployment |
