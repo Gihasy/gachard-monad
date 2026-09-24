@@ -254,6 +254,47 @@ function group(title: string) { results.push(`\n${title}`); }
   group("J. Removed surfaces");
   check("the advanced-access endpoint is gone", (await get("/api/user/advanced", session)).status === 404);
 
+  // ================= I1. buying, end to end over HTTP =================
+  // The route itself was never exercised. These checks go through the real
+  // endpoint with a real session, so the money arithmetic is tested where it
+  // actually runs rather than in a helper beside it.
+  //
+  // The on-chain transfer is left to fail on purpose: the token does not
+  // exist, so the contract's balanceOf require reverts during ethers'
+  // gas estimation and nothing is ever submitted. No gas is spent, and the
+  // route's refund path is the part worth proving — a buyer must get back
+  // exactly what they paid, with no fee asymmetry hiding in the rounding.
+  group("I1. Buying over HTTP");
+
+  const otherSeller = new ObjectId().toString();
+  const BUY_PRICE = 300;
+  await db.collection("listings").deleteMany({ listingId: "suite-l3" });
+  await db.collection("listings").insertOne({
+    listingId: "suite-l3", cardId: "suite-4", tokenId: 970004,
+    templateId: tpl[0].templateId, sellerId: otherSeller,
+    sellerWalletAddress: OWNER, price: BUY_PRICE, status: "active", createdAt: now,
+  });
+
+  const { addCrystal: give, getCrystalBalance: bal } = await import("../lib/crystal");
+  await db.collection("crystal_balances").deleteMany({ userId: { $in: [uid, otherSeller] } });
+  await give(uid, 1000);
+
+  const buyRes = await post("/api/marketplace/listings/suite-l3/buy", {}, session);
+  const buyBody = await buyRes.json().catch(() => null);
+  check(
+    "a failed on-chain transfer is reported, not swallowed",
+    buyRes.status === 500 && /refunded/i.test(buyBody?.error ?? ""),
+    `${buyRes.status} ${buyBody?.error ?? ""}`
+  );
+  check("the buyer is refunded to the exact starting balance", (await bal(uid)) === 1000, String(await bal(uid)));
+  check("no fee is skimmed on the refund", (await bal(uid)) === 1000);
+  check("the seller receives nothing for a sale that did not happen", (await bal(otherSeller)) === 0, String(await bal(otherSeller)));
+  const relisted = await db.collection("listings").findOne({ listingId: "suite-l3" });
+  check("the listing goes back to active", relisted?.status === "active", String(relisted?.status));
+
+  await db.collection("listings").deleteMany({ listingId: "suite-l3" });
+  await db.collection("crystal_balances").deleteMany({ userId: { $in: [uid, otherSeller] } });
+
   // ================= I2. a stuck marketplace purchase =================
   // The buy route waits about three seconds for the receipt. If it does not
   // arrive it writes five pending* fields on the card — and nothing read any

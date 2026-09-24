@@ -43,7 +43,7 @@ That is the default, not the ceiling. A user who wants custody of their own card
 - **Tests:** 78/78 passed (Foundry), 58 GachardCard + 20 PackEntropy, covering mint, print, redeem, transfer, burn, verification, access control and the entropy flow
 
 ### API and Logic Tests
-`npx tsx frontend/scripts/suite-api.ts` — **77 checks**, all passing, over authentication boundaries, what the public marketplace and public admin endpoints are allowed to return, logout, redeem, the EIP-712 batch signature, rate limits, chain reconciliation, Privy binding, marketplace purchases whose receipt arrives late, released cards and the payloads a QR scanner actually produces. It builds its own fixture, deletes it, and reports what it left behind.
+`npx tsx frontend/scripts/suite-api.ts` — **82 checks**, all passing, over authentication boundaries, what the public marketplace and public admin endpoints are allowed to return, logout, redeem, the EIP-712 batch signature, rate limits, chain reconciliation, Privy binding, marketplace purchases whose receipt arrives late, released cards and the payloads a QR scanner actually produces. It builds its own fixture, deletes it, and reports what it left behind.
 
 ### Nonce Manager
 Implemented `acquireNonce()` in `blockchain.ts` with lock mechanism to handle concurrent transactions. This prevents "existing transaction had higher priority" errors when multiple users buy packs simultaneously, a critical feature for real-time TCG gameplay.
