@@ -316,6 +316,8 @@ limitations of each. The largest decisions also have dedicated specs:
 
 - [`docs/ENTROPY-INTEGRATION-SPEC.md`](docs/ENTROPY-INTEGRATION-SPEC.md), the provably-fair
   pack randomness design: request/callback/fulfill flow, hash commitment, threat model
+- [`docs/INCIDENT-RUNBOOK.md`](docs/INCIDENT-RUNBOOK.md), what to do if the admin
+  key leaks: the one time-critical action first, the reasoning after it
 - [`docs/PRIVY-BEYOND-AUTH-EVALUATION.md`](docs/PRIVY-BEYOND-AUTH-EVALUATION.md) and
   [`docs/PRIVY-BEYOND-AUTH-SPEC.md`](docs/PRIVY-BEYOND-AUTH-SPEC.md), the evidence that
   export and import were possible and the seven-stage design that followed
@@ -406,6 +408,7 @@ All blockchain transactions are verifiable on Monad Explorer:
 - **User Wallets**: View user wallet addresses (admin sign-in required; withheld from anonymous visitors)
 - **Token IDs**: Track NFT tokens on blockchain
 - **Risk Scores**: AI anomaly detection results
+- **Token Supply Integrity**: compares `nextTokenId` on chain against the mints Gachard recorded, and goes loud if tokens appear that nothing accounts for — the first thing a compromised admin key would do. It compares deltas rather than totals, so deleting cards does not trip it, and it holds its alarm rather than clearing itself (ADR-036)
 
 ## API and Logic Tests
 
@@ -413,7 +416,7 @@ All blockchain transactions are verifiable on Monad Explorer:
 cd frontend && npx tsx scripts/suite-api.ts    # needs a server running
 ```
 
-82 checks over authentication boundaries, the public marketplace response, the
+89 checks over authentication boundaries, the public marketplace response, the
 public admin tier, logout, redeem, the EIP-712 batch signature, rate limits,
 reconciliation, Privy binding, stuck marketplace purchases, released cards and
 scanned QR payloads. It

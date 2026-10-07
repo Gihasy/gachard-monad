@@ -43,7 +43,7 @@ That is the default, not the ceiling. A user who wants custody of their own card
 - **Tests:** 78/78 passed (Foundry), 58 GachardCard + 20 PackEntropy, covering mint, print, redeem, transfer, burn, verification, access control and the entropy flow
 
 ### API and Logic Tests
-`npx tsx frontend/scripts/suite-api.ts` — **82 checks**, all passing, over authentication boundaries, what the public marketplace and public admin endpoints are allowed to return, logout, redeem, the EIP-712 batch signature, rate limits, chain reconciliation, Privy binding, marketplace purchases whose receipt arrives late, released cards and the payloads a QR scanner actually produces. It builds its own fixture, deletes it, and reports what it left behind.
+`npx tsx frontend/scripts/suite-api.ts` — **89 checks**, all passing, over authentication boundaries, what the public marketplace and public admin endpoints are allowed to return, logout, redeem, the EIP-712 batch signature, rate limits, chain reconciliation, Privy binding, marketplace purchases whose receipt arrives late, released cards and the payloads a QR scanner actually produces. It builds its own fixture, deletes it, and reports what it left behind.
 
 ### Nonce Manager
 Implemented `acquireNonce()` in `blockchain.ts` with lock mechanism to handle concurrent transactions. This prevents "existing transaction had higher priority" errors when multiple users buy packs simultaneously, a critical feature for real-time TCG gameplay.
@@ -66,6 +66,7 @@ The seed is generated via Pyth's commit-reveal protocol, making it cryptographic
 - **State Machine**: Digital ↔ Vaulted ↔ Exported ↔ Released card status with transfer blocking. `Released` means sent to an address outside Gachard; the platform cannot bring it back, and only the chain can say it returned
 - **AES-256-GCM**: Private keys encrypted at rest
 - **One identity**: every request is authenticated by a signed, httpOnly session cookie and nothing else (ADR-032)
+- **A written threat model, not a claim of safety**: ADR-036 records exactly what an attacker holding the admin key could do, read from the contract rather than assumed — including that `marketplaceTransfer` takes no signature from the holder, so the self-custody path does not yet protect a card from Gachard's own key. The response is built and rehearsed: an admin-console panel that detects minting nobody accounts for, and a one-command freeze that moves both contracts to a cold wallet. The contract fixes are ordered and deliberately deferred until after the submission
 - **Two audiences, one console**: the admin console is readable without an account so the print-to-approval flow can be followed, but its routes withhold the people in that flow — email, recipient name, phone, address and the redeem code are sent only to a signed-in admin. The gate states the result in a request header that is stripped from every incoming request before it is set, so it cannot be forged (ADR-032, second amendment)
 
 ## Why Monad
