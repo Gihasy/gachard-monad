@@ -409,7 +409,7 @@ All blockchain transactions are verifiable on Monad Explorer:
 - **User Wallets**: View user wallet addresses (admin sign-in required; withheld from anonymous visitors)
 - **Token IDs**: Track NFT tokens on blockchain
 - **Risk Scores**: AI anomaly detection results
-- **Token Supply Integrity**: compares `nextTokenId` on chain against the mints Gachard recorded, and goes loud if tokens appear that nothing accounts for — the first thing a compromised admin key would do. It compares deltas rather than totals, so deleting cards does not trip it, and it holds its alarm rather than clearing itself (ADR-036)
+- **Token Supply Integrity**: compares `nextTokenId` on chain against the highest token id Gachard has acknowledged minting, and goes loud if tokens appear beyond it — the first thing a compromised admin key would do. The high-water mark lives outside the collections that get wiped, so clean-slate and test fixtures cannot make Gachard's own mints look unexplained, and it holds its alarm rather than clearing itself (ADR-036)
 
 ## API and Logic Tests
 
@@ -417,7 +417,7 @@ All blockchain transactions are verifiable on Monad Explorer:
 cd frontend && npx tsx scripts/suite-api.ts    # needs a server running
 ```
 
-89 checks over authentication boundaries, the public marketplace response, the
+90 checks over authentication boundaries, the public marketplace response, the
 public admin tier, logout, redeem, the EIP-712 batch signature, rate limits,
 reconciliation, Privy binding, stuck marketplace purchases, released cards and
 scanned QR payloads. It

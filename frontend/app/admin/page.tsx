@@ -324,7 +324,7 @@ export default function AdminPage() {
   const [pendingMeta, setPendingMeta] = useState({ total: 0, staleCount: 0, avgPendingMinutes: 0 });
   const [supporters, setSupporters] = useState<AdminSupporter[]>([]);
   const [creatorApps, setCreatorApps] = useState<CreatorApp[]>([]);
-  const [balances, setBalances] = useState<{ adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; baselineNextTokenId: number; chainMinted: number; recordedMinted: number; unexplained: number; baselineAt: string | null; checkedAt: string } | null } | null>(null);
+  const [balances, setBalances] = useState<{ adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; highestKnownTokenId: number; unexplained: number; updatedAt: string | null; checkedAt: string } | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1727,7 +1727,7 @@ function HealthTable({
 }
 
 /* ─── Balance Cards ─── */
-function BalanceCards({ balances }: { balances: { adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; baselineNextTokenId: number; chainMinted: number; recordedMinted: number; unexplained: number; baselineAt: string | null; checkedAt: string } | null } }) {
+function BalanceCards({ balances }: { balances: { adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; highestKnownTokenId: number; unexplained: number; updatedAt: string | null; checkedAt: string } | null } }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, label: string) => {
@@ -1829,13 +1829,13 @@ function BalanceCards({ balances }: { balances: { adminWallet: { address: string
             </p>
           ) : (
             <p className="font-display text-2xl mb-2" style={{ color: "var(--electric-blue)" }}>
-              {balances.supply.recordedMinted}{" "}
-              <span className="text-sm text-white/40">minted since last check</span>
+              {balances.supply.highestKnownTokenId}{" "}
+              <span className="text-sm text-white/40">tokens, all accounted for</span>
             </p>
           )}
 
           <p className="text-[0.65rem] text-white/40">
-            chain next id {balances.supply.chainNextTokenId} · baseline {balances.supply.baselineNextTokenId} · on chain +{balances.supply.chainMinted} · recorded +{balances.supply.recordedMinted}
+            chain next id {balances.supply.chainNextTokenId} · highest known {balances.supply.highestKnownTokenId}
           </p>
 
           {balances.supply.unexplained > 0 && (

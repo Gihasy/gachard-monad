@@ -42,7 +42,7 @@ function group(title: string) { results.push(`\n${title}`); }
   const { settleMarketplacePurchase, unwindMarketplacePurchase } =
     await import("../lib/transactions");
   const { getCrystalBalance } = await import("../lib/crystal");
-  const { checkSupplyIntegrity } = await import("../lib/supply-integrity");
+  const { checkSupplyIntegrity, recordMintedUpTo } = await import("../lib/supply-integrity");
 
   const client = new MongoClient(process.env.MONGODB_URL!);
   await client.connect();
@@ -257,14 +257,10 @@ function group(title: string) { results.push(`\n${title}`); }
 
   // ================= H2. supply integrity =================
   // A compromised admin key can mintBatch without limit (ADR-036). This is the
-  // detection, and the behaviour worth testing is not that it spots a gap —
-  // it is that the alarm does not clear itself on the next poll, because the
-  // check runs whenever the admin console loads.
-  //
-  // It compares deltas rather than totals on purpose: nextTokenId only rises
-  // while card rows get deleted, so clean-slate and every test fixture would
-  // trip a totals comparison. A detector that cries wolf teaches people to
-  // ignore it.
+  // detection, and the behaviour worth testing is that it survives deletion:
+  // the first version counted mint transactions, so clean-slate and every test
+  // fixture made Gachard's own mints look unexplained. It took a false alarm in
+  // production to see it. A detector that cries wolf is worse than none.
   group("H2. Supply integrity");
 
   const baselines = db.collection("chain_baseline");
@@ -273,41 +269,41 @@ function group(title: string) { results.push(`\n${title}`); }
   await baselines.deleteOne({ _id: "token-supply" as never });
   const first = await checkSupplyIntegrity();
   check("a first run adopts the chain rather than alarming", first.unexplained === 0, String(first.unexplained));
-  check("it records a baseline to compare against later", first.baselineNextTokenId === first.chainNextTokenId);
+  check("it knows the chain's last issued id", first.highestKnownTokenId === first.chainNextTokenId - 1);
 
   const quiet = await checkSupplyIntegrity();
   check("a quiet run stays quiet", quiet.unexplained === 0, String(quiet.unexplained));
 
-  // Tokens appearing on chain that no Gachard mint accounts for.
-  await baselines.updateOne(
-    { _id: "token-safe" as never },
-    { $set: { nextTokenId: first.chainNextTokenId - 40, recordedAt: new Date().toISOString() } },
-    { upsert: true }
-  );
+  // Tokens on chain beyond anything Gachard has acknowledged.
   await baselines.updateOne(
     { _id: "token-supply" as never },
-    { $set: { nextTokenId: first.chainNextTokenId - 40 } }
+    { $set: { highestKnownTokenId: first.chainNextTokenId - 41 } }
   );
   const alarmed = await checkSupplyIntegrity();
   check("unexplained minting is reported", alarmed.unexplained === 40, String(alarmed.unexplained));
 
   const stillAlarmed = await checkSupplyIntegrity();
   check("the alarm does not clear itself on the next check", stillAlarmed.unexplained === 40, String(stillAlarmed.unexplained));
-  const held = await baselines.findOne({ _id: "token-supply" as never });
-  check("the baseline is held while unexplained", Number(held?.nextTokenId) === first.chainNextTokenId - 40, String(held?.nextTokenId));
 
-  // Resolve it, and it should go quiet and advance again.
-  await baselines.updateOne(
-    { _id: "token-supply" as never },
-    { $set: { nextTokenId: first.chainNextTokenId } }
-  );
+  // The regression that caused a false alarm in production: wiping the
+  // collections that record mints must not change the reading.
+  const before = (await checkSupplyIntegrity()).unexplained;
+  await db.collection("transactions").deleteMany({ type: "mint", userId: "no-such-user" });
+  check("deleting mint records does not move the reading", (await checkSupplyIntegrity()).unexplained === before, String(before));
+
+  // A real mint claims its ids and quiets the alarm.
+  await recordMintedUpTo([first.chainNextTokenId - 1]);
   const resolved = await checkSupplyIntegrity();
-  check("it goes quiet once the gap is explained", resolved.unexplained === 0, String(resolved.unexplained));
+  check("acknowledging the tokens clears it", resolved.unexplained === 0, String(resolved.unexplained));
 
-  await baselines.deleteOne({ _id: "token-safe" as never });
+  // And a late, lower id must not drag the mark backwards.
+  await recordMintedUpTo([1]);
+  check("an older id cannot lower the high-water mark", (await checkSupplyIntegrity()).unexplained === 0);
+
   if (savedBaseline) {
     await baselines.replaceOne({ _id: "token-supply" as never }, savedBaseline, { upsert: true });
   }
+
 
   // ================= I1. buying, end to end over HTTP =================
   // The route itself was never exercised. These checks go through the real

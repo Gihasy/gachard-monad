@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordMintedUpTo } from "@/lib/supply-integrity";
 import { getCollection, parseObjectId } from "@/lib/mongodb";
 import { getAuthenticatedUser } from "@/lib/session";
 import { getEntropySeed, fulfillPackEntropy, waitForReceipt, getEntropyRequestData, getFulfillTxHash } from "@/lib/blockchain";
@@ -96,6 +97,11 @@ async function recoverFromChain(
       console.warn(`[fulfill] recover: failed to parse fulfill receipt for seq ${sequenceNumber}:`, e);
     }
   }
+
+  // Tell the supply monitor these ids are ours (ADR-036). It lives in
+  // chain_baseline, which nothing deletes, so a clean slate or a tidied-up
+  // fixture cannot make Gachard's own mints look unexplained.
+  await recordMintedUpTo(confirmedTokenIds);
 
   // Update card rarities and templateId (even if tokenIds weren't recovered from events)
   const templates = await pickCardTemplatesBulk(rarities);
@@ -288,6 +294,10 @@ export async function POST(request: Request) {
           mintIndex++;
         }
       }
+
+      // Same as the recovery path above: claim these ids before anything else
+      // can read them as a stranger's.
+      await recordMintedUpTo(confirmedTokenIds);
 
       // Update transaction status to confirmed
       await txCollection.updateOne(
