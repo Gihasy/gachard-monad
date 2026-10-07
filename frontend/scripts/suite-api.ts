@@ -50,7 +50,14 @@ function group(title: string) { results.push(`\n${title}`); }
 
   // ---- fixture ----
   const privyWallet = ethers.Wallet.createRandom();
+
+  // Clear by cardId, not only by ownerAddress. OWNER is random per run, so a
+  // run that crashed before its cleanup leaves fixtures that no later run can
+  // match — and because cardId is uniquely indexed, every subsequent run then
+  // dies on a duplicate key before the first check. Found exactly that way.
+  await db.collection("cards").deleteMany({ cardId: { $regex: "^suite-" } });
   await db.collection("cards").deleteMany({ ownerAddress: OWNER });
+  await db.collection("listings").deleteMany({ listingId: { $regex: "^suite-" } });
   await db.collection("users").deleteMany({ email: EMAIL });
 
   const userId = new ObjectId();
@@ -504,9 +511,10 @@ function group(title: string) { results.push(`\n${title}`); }
   check("someone else's QR yields nothing", sc("https://example.com/hello").cardId === null);
 
   // ---- cleanup ----
+  await db.collection("cards").deleteMany({ cardId: { $regex: "^suite-" } });
   await db.collection("cards").deleteMany({ ownerAddress: OWNER });
   await db.collection("users").deleteMany({ email: EMAIL });
-  await db.collection("listings").deleteMany({ listingId: "suite-l1" });
+  await db.collection("listings").deleteMany({ listingId: { $regex: "^suite-" } });
   await db.collection("transactions").deleteMany({ userId: uid });
   await db.collection("privy_nonces").deleteMany({ userId: uid });
   await db.collection("rate_limits").deleteMany({ userId: uid });

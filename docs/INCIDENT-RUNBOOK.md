@@ -9,8 +9,8 @@ Read the first section and act. The explanations are below it, not above it.
 ## 1. Do this first
 
 ```powershell
-$env:Path += ";$env:USERPROFILE.foundryin"
-cd D:gachard-monadrontend
+$env:Path += ";$env:USERPROFILE\.foundry\bin"
+cd D:\gachard-monad\frontend
 npx tsx scripts/emergency-transfer-ownership.ts --confirm
 ```
 
