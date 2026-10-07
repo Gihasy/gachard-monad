@@ -324,7 +324,7 @@ export default function AdminPage() {
   const [pendingMeta, setPendingMeta] = useState({ total: 0, staleCount: 0, avgPendingMinutes: 0 });
   const [supporters, setSupporters] = useState<AdminSupporter[]>([]);
   const [creatorApps, setCreatorApps] = useState<CreatorApp[]>([]);
-  const [balances, setBalances] = useState<{ adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string } } | null>(null);
+  const [balances, setBalances] = useState<{ adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; baselineNextTokenId: number; chainMinted: number; recordedMinted: number; unexplained: number; baselineAt: string | null; checkedAt: string } | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1727,7 +1727,7 @@ function HealthTable({
 }
 
 /* ─── Balance Cards ─── */
-function BalanceCards({ balances }: { balances: { adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string } } }) {
+function BalanceCards({ balances }: { balances: { adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; baselineNextTokenId: number; chainMinted: number; recordedMinted: number; unexplained: number; baselineAt: string | null; checkedAt: string } | null } }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, label: string) => {
@@ -1796,6 +1796,57 @@ function BalanceCards({ balances }: { balances: { adminWallet: { address: string
           )}
         </button>
       </div>
+
+      {/* Supply integrity (ADR-036). Sits with the balances because it answers
+          the same kind of question — not "can we transact" but "is anything
+          minting that we did not". Loud when it matters, quiet otherwise. */}
+      {balances.supply && (
+        <div
+          className="glass p-4 sm:col-span-2"
+          style={balances.supply.unexplained > 0
+            ? { borderColor: "rgba(255,107,186,0.5)", background: "rgba(255,107,186,0.06)" }
+            : undefined}
+          data-testid="supply-integrity"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[0.6rem] uppercase tracking-widest text-white/40">Token Supply Integrity</p>
+            <span
+              className="text-[0.55rem] px-2 py-0.5 rounded-full"
+              style={balances.supply.unexplained > 0
+                ? { background: "rgba(255,107,186,0.18)", color: "var(--aurora-pink)" }
+                : { background: "rgba(0,255,136,0.12)", color: "#00ff88" }}
+            >
+              {balances.supply.unexplained > 0 ? "Unexplained minting" : "Accounted for"}
+            </span>
+          </div>
+
+          {balances.supply.unexplained > 0 ? (
+            <p className="font-display text-2xl mb-2" style={{ color: "var(--aurora-pink)" }}>
+              {balances.supply.unexplained}{" "}
+              <span className="text-sm text-white/50">
+                token{balances.supply.unexplained === 1 ? "" : "s"} Gachard did not mint
+              </span>
+            </p>
+          ) : (
+            <p className="font-display text-2xl mb-2" style={{ color: "var(--electric-blue)" }}>
+              {balances.supply.recordedMinted}{" "}
+              <span className="text-sm text-white/40">minted since last check</span>
+            </p>
+          )}
+
+          <p className="text-[0.65rem] text-white/40">
+            chain next id {balances.supply.chainNextTokenId} · baseline {balances.supply.baselineNextTokenId} · on chain +{balances.supply.chainMinted} · recorded +{balances.supply.recordedMinted}
+          </p>
+
+          {balances.supply.unexplained > 0 && (
+            <p className="text-[0.65rem] mt-2 leading-relaxed" style={{ color: "var(--aurora-pink)" }}>
+              Tokens were issued that no Gachard mint accounts for. Treat the admin key as
+              compromised: transfer ownership to the cold address in the runbook before anything
+              else (ADR-036). This reading will not clear itself.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
