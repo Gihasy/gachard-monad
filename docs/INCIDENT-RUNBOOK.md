@@ -8,9 +8,16 @@ Read the first section and act. The explanations are below it, not above it.
 
 ## 1. Do this first
 
-```bash
-cd frontend && npx tsx scripts/emergency-transfer-ownership.ts --confirm
+```powershell
+$env:Path += ";$env:USERPROFILE.foundryin"
+cd D:gachard-monadrontend
+npx tsx scripts/emergency-transfer-ownership.ts --confirm
 ```
+
+The first line is not optional on Windows. Foundry lives in `~/.foundry/bin`
+and PowerShell does not know about it, so `cast` later in this runbook fails
+with "not recognized". Git Bash already has it. Found during the drill, which
+is what drills are for.
 
 **The `--confirm` is required.** Without it the script prints what it would do
 and stops. That default exists because the script was once run simply to look
@@ -29,14 +36,26 @@ Its balance cannot be stolen outright (there is no withdraw function), but it
 can be spent to nothing.
 
 **It is a race.** Whoever calls `transferOwnership` first wins, permanently. The
-attacker holds the same key and can do this to us. Seconds matter; do not stop
-to investigate first.
+attacker holds the same key and can do this to us.
+
+**Freeze first, investigate afterwards.** The instinct is to check whether it is
+really a compromise, how they got in, what is already gone. That costs ten
+minutes, and those ten minutes belong to the attacker. The two mistakes are not
+symmetric: freezing on a false alarm costs a few minutes of downtime and is
+undone in five, while investigating first on a real one costs cards that cannot
+be recovered and possibly the contract itself. Keep the threshold for pressing
+this low. The only thing worth checking first is that you are not mid-recording.
 
 ### The destination address
 
 ```
-EMERGENCY_OWNER = <<< NOT SET — FILL THIS IN BEFORE YOU NEED IT >>>
+EMERGENCY_OWNER = 0x97A189d91E8c784Df6F670220D3B7b319Fb6F61e
 ```
+
+A Ledger account used for nothing else. Set and exercised on 7 October 2026:
+ownership of both contracts moved to it and was handed back, so the address is
+known good and the device provably signs on this network — the one thing a dry
+run can never establish.
 
 It must be a cold wallet or a multisig **whose keys have never touched a
 server**. A second hot key is not a destination; it is the same problem with a
@@ -157,11 +176,29 @@ Before the full drill, make sure the cold address can transact at all: it needs
 Monad Testnet configured in your wallet software and some MON for gas. A frozen
 platform plus a cold wallet that cannot sign is a bad place to discover either.
 
-Handing ownership back is done from the cold wallet, not by this script:
+Handing ownership back is done from the cold wallet, not by this script. Two
+routes, and the second is the one that actually worked here.
 
-```bash
-cast send <CONTRACT> "transferOwnership(address)" <ADMIN_WALLET>   --ledger --rpc-url https://testnet-rpc.monad.xyz
-```
+**Explorer plus wallet extension — recommended.** Both contracts are verified
+on MonadVision, so there is a real Write Contract form:
 
-Run it for GachardCard and PackEntropy. Verify the destination on the hardware
-wallet's own screen, not the computer's.
+    https://testnet.monadvision.com/address/0x2a05a2e3b0e7355b97de593e354063e9474c9d08?tab=Contract
+    https://testnet.monadvision.com/address/0x6B53C35e8baBaaBe4DD725573C3f612121764542?tab=Contract
+
+Contract -> Write Contract -> Connect Wallet -> transferOwnership. You see the
+function name and the parameter name, and the wallet simulates the call before
+you sign, which beats pasting hex nobody can read.
+
+**cast with the hardware wallet directly** is the alternative:
+
+    cast send <CONTRACT> "transferOwnership(address)" <NEW_ADMIN> --ledger --rpc-url https://testnet-rpc.monad.xyz
+
+This failed during the drill with "Could not connect to Ledger device". The
+cause is that a wallet extension holds the USB connection — Rabby, MetaMask or
+Ledger Live. Close the browser entirely, and quit Ledger Live from the system
+tray rather than its window. Blind signing must also be enabled in the Ledger's
+Ethereum app, because transferOwnership is a contract call and the device
+refuses those by default.
+
+Either way, verify the destination on the hardware wallet's own screen, not the
+computer's.
