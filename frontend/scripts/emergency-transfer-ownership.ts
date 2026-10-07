@@ -19,7 +19,18 @@
  * attempted, because they protect different things and a failure on one is no
  * reason to leave the other open.
  *
- *   npx tsx scripts/emergency-transfer-ownership.ts
+ * **It does nothing without --confirm.** Run it bare and it prints what it
+ * would do, then stops. That is not politeness: this script freezes the whole
+ * platform, and the first time it ran it was invoked to check its own
+ * pre-flight output, which transferred both contracts for real. A tool whose
+ * dry run is indistinguishable from the real thing will eventually be fired by
+ * accident, and the accident will look exactly like the emergency.
+ *
+ * It also makes the drill safe — you can confirm the address and the current
+ * owners without moving anything.
+ *
+ *   npx tsx scripts/emergency-transfer-ownership.ts            # shows the plan
+ *   npx tsx scripts/emergency-transfer-ownership.ts --confirm  # does it
  *
  * The destination comes from EMERGENCY_OWNER in .env.local. It must be a cold
  * wallet or multisig whose keys have never been on a server; a second hot key
@@ -56,8 +67,9 @@ type Target = { label: string; address: string };
 async function transferOne(
   target: Target,
   destination: string,
-  wallet: ethers.Wallet
-): Promise<"moved" | "already" | "not-owner" | "failed"> {
+  wallet: ethers.Wallet,
+  confirmed: boolean
+): Promise<"moved" | "already" | "not-owner" | "failed" | "would-move"> {
   console.log(`\n── ${target.label}  ${target.address}`);
   const contract = new ethers.Contract(target.address, OWNABLE_ABI, wallet);
 
@@ -78,6 +90,11 @@ async function transferOne(
     console.log("   THIS KEY IS NOT THE OWNER — it cannot transfer this contract.");
     console.log("   If you did not expect that, assume the attacker was faster here.");
     return "not-owner";
+  }
+
+  if (!confirmed) {
+    console.log("   WOULD transfer ownership to", destination);
+    return "would-move";
   }
 
   try {
@@ -121,6 +138,9 @@ async function main() {
     process.exit(1);
   }
 
+  // Nothing moves without this. See the note at the top of the file.
+  const confirmed = process.argv.includes("--confirm");
+
   const destination = ethers.getAddress(destinationRaw);
   const provider = new ethers.JsonRpcProvider(rpc);
   const wallet = new ethers.Wallet(key, provider);
@@ -132,6 +152,7 @@ async function main() {
     process.exit(1);
   }
 
+  console.log(confirmed ? "MODE       : LIVE — this will transfer ownership" : "MODE       : dry run — nothing will move");
   console.log("signing as :", wallet.address);
   console.log("moving to  :", destination);
 
@@ -145,7 +166,7 @@ async function main() {
 
   const results: Record<string, string> = {};
   for (const t of targets) {
-    results[t.label] = await transferOne(t, destination, wallet);
+    results[t.label] = await transferOne(t, destination, wallet, confirmed);
   }
 
   // Ownership does not revoke minting rights. An address added as a minter
@@ -168,6 +189,14 @@ async function main() {
 
   console.log("\n── result");
   for (const [label, r] of Object.entries(results)) console.log(`   ${label.padEnd(12)} ${r}`);
+
+  if (!confirmed) {
+    console.log("\nNothing was transferred. Re-run with --confirm to do it for real:");
+    console.log("   npx tsx scripts/emergency-transfer-ownership.ts --confirm");
+    console.log("\nBe sure first: this freezes print, redeem, marketplace purchases,");
+    console.log("dismantle and pack opening until ownership is handed to a new key.");
+    return;
+  }
 
   const anyMoved = Object.values(results).includes("moved");
   if (anyMoved) {

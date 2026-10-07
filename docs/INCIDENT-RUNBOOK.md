@@ -9,8 +9,14 @@ Read the first section and act. The explanations are below it, not above it.
 ## 1. Do this first
 
 ```bash
-cd frontend && npx tsx scripts/emergency-transfer-ownership.ts
+cd frontend && npx tsx scripts/emergency-transfer-ownership.ts --confirm
 ```
+
+**The `--confirm` is required.** Without it the script prints what it would do
+and stops. That default exists because the script was once run simply to look
+at its output, and it transferred both contracts for real — a tool whose dry
+run is indistinguishable from the real thing gets fired by accident sooner or
+later, and the accident looks exactly like the emergency.
 
 This moves ownership of **both contracts** to the cold address below.
 
@@ -132,7 +138,30 @@ contract (ADR-036).
 
 ## 6. Drill
 
-Run it once, before you need it. Transferring ownership to the cold address and
-back proves the script works, the address is right, and the keys are where you
-think they are. Finding out any of those is wrong during an incident is the
-expensive way.
+**The safe drill — run this any time, it moves nothing:**
+
+```bash
+cd frontend && npx tsx scripts/emergency-transfer-ownership.ts
+```
+
+It prints the current owners, the destination, and who holds minting rights.
+That alone catches a wrong or missing address, which is the most likely thing
+to be broken.
+
+**The full drill** — actually transferring and handing it back — proves the
+hardware wallet can sign on this network, which the dry run cannot. It
+**freezes the platform** while ownership is away, so do not run it near a
+recording.
+
+Before the full drill, make sure the cold address can transact at all: it needs
+Monad Testnet configured in your wallet software and some MON for gas. A frozen
+platform plus a cold wallet that cannot sign is a bad place to discover either.
+
+Handing ownership back is done from the cold wallet, not by this script:
+
+```bash
+cast send <CONTRACT> "transferOwnership(address)" <ADMIN_WALLET>   --ledger --rpc-url https://testnet-rpc.monad.xyz
+```
+
+Run it for GachardCard and PackEntropy. Verify the destination on the hardware
+wallet's own screen, not the computer's.
