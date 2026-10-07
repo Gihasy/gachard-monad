@@ -12,10 +12,15 @@ Read the first section and act. The explanations are below it, not above it.
 cd frontend && npx tsx scripts/emergency-transfer-ownership.ts
 ```
 
-This calls `transferOwnership()` on `GachardCard`, moving ownership to the
-cold address below. It strips the attacker of **every** `onlyOwner` function at
-once — `marketplaceTransfer`, `burnCard`, `redeemCard`, `setAuthorizedMinter` —
-and of the ability to add themselves as a minter.
+This moves ownership of **both contracts** to the cold address below.
+
+**GachardCard** — strips the attacker of every `onlyOwner` function at once:
+`marketplaceTransfer`, `burnCard`, `redeemCard`, `setAuthorizedMinter`.
+
+**PackEntropy** — its `requestPack` is `onlyOwner` too. A key that can no
+longer touch cards can still call it in a loop and burn the entropy budget.
+Its balance cannot be stolen outright (there is no withdraw function), but it
+can be spent to nothing.
 
 **It is a race.** Whoever calls `transferOwnership` first wins, permanently. The
 attacker holds the same key and can do this to us. Seconds matter; do not stop
@@ -53,14 +58,38 @@ row in `transactions`.
 
 ## 3. After the call lands
 
-**If ownership transferred to the cold address:** nothing is lost. The contract
-is intact and every card stays where it was. Rotate `ADMIN_PRIVATE_KEY`, work
-out how it leaked, and only then restore day-to-day operations — the backend
-cannot call `onlyOwner` functions until the cold key signs or hands ownership
-to a fresh hot key.
+**If ownership transferred to the cold address:** nothing is lost. The
+contracts are intact and every card stays where it was. Gachard is frozen —
+print, redeem, marketplace purchases and dismantle all fail. That is correct.
+A frozen platform is a recoverable state.
 
-Print, redeem, marketplace purchases and dismantle will fail while this is
-true. That is correct. A frozen platform is a recoverable state.
+### Getting back to working, without handing the key back
+
+Transferring ownership freezes; it does not fix. **Do not give ownership back
+to the key that leaked** — that returns you to exactly where you started. Make
+a new one, and use the hardware wallet as the bridge while you swap it.
+
+1. **Generate a new admin wallet.** New address, new key, created somewhere the
+   compromise could not have reached.
+2. **Rotate the whole environment, not just that key.** If the attacker reached
+   Vercel they took everything in it: `MONGODB_URL`, `ENCRYPTION_SECRET_KEY`,
+   `PRIVY_APP_SECRET`, `ADMIN_PASSWORD`. Replacing one of five is not recovery.
+3. **Fund the new address** with MON for gas.
+4. **From the hardware wallet**, call `transferOwnership` on both contracts to
+   the new admin address.
+5. **Revoke any minter the attacker added.** Ownership does not revoke minting
+   rights — `authorizedMinters` is a separate mapping, and an address granted
+   before the freeze keeps it afterwards. The emergency script prints whether
+   PackEntropy and the old admin wallet are authorized. Any *other* address
+   cannot be listed cheaply, because this RPC caps `eth_getLogs` at a 100-block
+   range. Revoke what you know with `setAuthorizedMinter(addr, false)` from the
+   new owner, and treat an unexplained reading on the Token Supply Integrity
+   panel as evidence that one is still out there.
+6. **Check supply integrity** in the admin console before reopening. If it still
+   reads unexplained, something is still minting.
+
+The hardware wallet is never the permanent owner. It holds ownership only long
+enough for the hot key underneath to be replaced.
 
 **If the attacker transferred ownership first:** the contract is gone. Do not
 rush a replacement. Read ADR-036 on recovery — the short version is that a new
@@ -81,6 +110,10 @@ key and the same rights; it is a loop you lose.
 **Do not wipe the database.** It is the record of who owned what, and after a
 compromise it is the only basis for any recovery. Take a copy before anything
 else if you have a spare minute — but not before section 1.
+
+**Do not reinstall the key that leaked.** It is the most natural thing to do
+once the panic passes, because it is the fastest way to make the site work
+again, and it undoes everything.
 
 ---
 

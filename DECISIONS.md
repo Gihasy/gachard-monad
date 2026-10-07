@@ -510,7 +510,9 @@ This is stronger than a freeze list, and a freeze list should not be built: a bl
 
 ### Shipping this week
 
-**The emergency playbook.** The first response to a detected compromise is **not** a new contract — it is calling `transferOwnership()` to a cold or multisig address the attacker does not control. We still hold the key too. Winning that call strips the attacker of every `onlyOwner` function at once, including the ability to add themselves as a minter, and nothing needs migrating.
+**The emergency playbook.** The first response to a detected compromise is **not** a new contract — it is calling `transferOwnership()` to a cold or multisig address the attacker does not control, on **both** contracts. PackEntropy is `Ownable` too and its `requestPack` is `onlyOwner`, so a key that can no longer touch cards can still loop it and burn the entropy budget. Its balance cannot be stolen — there is no withdraw function — only spent to nothing.
+
+And freezing is not fixing: ownership must never be handed back to the key that leaked. A new hot key is generated, the whole environment is rotated rather than that one value, and the cold address holds ownership only long enough for the swap. Ownership also does not revoke minting rights, since `authorizedMinters` is a separate mapping — an address granted before the freeze keeps it, and this RPC caps `eth_getLogs` at 100 blocks, so unknown ones cannot be enumerated cheaply. That is one more argument for enumerable roles in the next contract. We still hold the key too. Winning that call strips the attacker of every `onlyOwner` function at once, including the ability to add themselves as a minter, and nothing needs migrating.
 
 It is a race, and whoever calls first wins permanently. That is exactly why detection speed decides the outcome: it determines whether we are in the race at all. **The destination address is chosen and recorded in the runbook before it is needed**, because a transaction whose address is already known is far faster than a decision taken in a panic.
 
