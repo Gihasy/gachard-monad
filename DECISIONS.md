@@ -459,3 +459,95 @@ It also gives Crystal a second use. Today a duplicate is only worth something if
 **Cosmetics stay off-chain.** They are display, not property. Keeping them out of the contract avoids the metadata question entirely (ADR-033) and keeps them cheap to add, change and retire — which is what a cosmetics catalogue needs and what a token is bad at.
 
 **Not decided here**: whether a sink is needed yet. With the database clean-slated there is nothing accumulated to drain. This ADR exists so the shape of the answer is settled before there are thousands of users holding large balances, because adding a sink later reads as confiscation to everyone who is already rich.
+
+## ADR-036: What a Compromised Admin Key Can Do, and What We Are Doing About It Now
+
+**Status**: Accepted, 7 October 2026. The findings describe the **deployed** contract. The remedies are split between what ships this week and what waits for the next contract.
+
+**Decision**: do not redeploy before the hackathon submission. Write down exactly what an attacker holding the admin key could do, prepare the emergency response, add one detection check, and fix the contract properly afterwards.
+
+---
+
+### What the key can do today
+
+The admin wallet is `owner()` of `GachardCard`. Read from the source rather than assumed:
+
+```solidity
+function marketplaceTransfer(uint256 tokenId, address from, address to) external onlyOwner {
+    require(cardStatus[tokenId] == CardStatus.Digital, "Card is not digital");
+    require(balanceOf(from, tokenId) == 1, "Sender does not own card");
+```
+
+No signature from the holder. No evidence that a sale happened. Whoever holds the key can move **any Digital card from any address to any address**.
+
+**That includes cards in users' own Privy wallets.** An exported card is `Exported` in MongoDB but still `Digital` on chain — only `Vaulted` blocks transfers in `_update()`. So the self-custody path does not currently protect a card from Gachard's own key. That contradicts what ADR-031 promises the user, and it is the most important finding here.
+
+`Vaulted` is no safer. `redeemCard` compares its argument against `storedHash[tokenId]`, and that mapping is declared `public` — an attacker reads the hash off chain and passes it straight back. Knowing the physical redeem code is not required.
+
+`burnCard` destroys any Digital card. `mintBatch` mints without limit. `setAuthorizedMinter` grants minting to anyone. `transferOwnership` locks us out permanently.
+
+**Role separation is not available on this contract.** Of the seven functions the backend calls with the admin key, five are strictly `onlyOwner` — `requestPrint`, `redeemCard`, `marketplaceTransfer`, `recordVerification`, `burnCard` — and all five sit on the ordinary request path. Only `mintCard` and `mintBatch` accept the `authorizedMinters` role. The daily key therefore *must* be the owner. Any advice to "give the daily key limited permissions" needs a new contract; it cannot be done by configuration.
+
+### What the key cannot do, and why
+
+A token minted straight to an attacker's address is **worthless inside Gachard**.
+
+Every action starts from a document in the `cards` collection. Dismantle returns 404 without one, then 403 unless `card.ownerAddress` matches the caller. Listing checks the same document. The only production path that creates one is `/api/mint`, which requires a session, deducts credits and goes through PackEntropy — and nothing anywhere creates a card row by observing the chain, including the reconcilers, which only ever `updateOne` documents that already exist.
+
+So an attacker cannot mint cards and then sell them, dismantle them for Crystal, or print them. The database is an unplanned but real second gate.
+
+This is stronger than a freeze list, and a freeze list should not be built: a block list has to be noticed and maintained, and would be a second mechanism that can disagree with the first. These cards are not blocked — they were never admitted.
+
+**The condition this rests on**: the key alone is not enough, but the key *and* the database is. Both live in the same Vercel environment today. They must not leak together, and that is a real weakness rather than a theoretical one.
+
+### The split that decides what can honestly be promised
+
+**Custodial cards cannot be protected from a platform compromise.** Gachard holds those keys, encrypted at rest (ADR-020). Whoever obtains `ENCRYPTION_SECRET_KEY` and the database holds the cards, whatever the contract says. That is what custody means, and it is not a defect to be engineered away.
+
+**Self-custody cards can be, and are not.** Privy holds those keys, not Gachard. The contract hands them over anyway. This is the gap worth closing, because it is the only promise that can be kept completely.
+
+---
+
+### Shipping this week
+
+**The emergency playbook.** The first response to a detected compromise is **not** a new contract — it is calling `transferOwnership()` to a cold or multisig address the attacker does not control. We still hold the key too. Winning that call strips the attacker of every `onlyOwner` function at once, including the ability to add themselves as a minter, and nothing needs migrating.
+
+It is a race, and whoever calls first wins permanently. That is exactly why detection speed decides the outcome: it determines whether we are in the race at all. **The destination address is chosen and recorded in the runbook before it is needed**, because a transaction whose address is already known is far faster than a decision taken in a panic.
+
+**Supply integrity check.** `nextTokenId` is public and the card count is a query. A sudden gap between them is rogue minting, visible in minutes. One check, no contract change, alongside the MON balances the admin console already watches.
+
+**This ADR.** For a project with one user on testnet, the written record is the mitigation that pays. Exposure today is zero; the submission is in a week. Being able to answer "what if your admin key leaks" with the code, the gap, the fix, and the reason it has not shipped yet is worth more than a rushed contract.
+
+### Not shipping this week
+
+A new contract. One week to the deadline, a demo still unrecorded, and one dead contract (`0x712b70…`) already paid for in a previous migration. Exposure is a single testnet account holding nothing of value. Redeploying now trades a mapped risk for an unmapped one, and takes its hours from the recording.
+
+### The next contract, in priority order
+
+**1. `marketplaceTransfer` requires an EIP-712 signature from the holder.** This is the one that matters. It converts "the damage is bounded" into "the theft is impossible", and it makes ADR-031's promise true. The pattern already exists in this codebase as `ExportBatch` in `lib/export-intent.ts`. After it, a leaked key can still mint, burn unsold inventory and spend gas — it cannot take a card someone holds in their own wallet.
+
+**2. `AccessControl` instead of a single owner.** A minter role, a fulfilment role, an admin role. The hot key carries only what the request path needs; the owner key goes cold.
+
+**3. Timelock on the administrative functions only.** `setAuthorizedMinter`, `burnCard`, `transferOwnership`. A compromised key can then only queue, and a queued action can be cancelled — the race becomes a two-day window.
+
+It cannot cover the operational functions. `requestPrint`, `redeemCard` and `marketplaceTransfer` run on the user's request path under a ten-second budget (ADR-018); a timelock there means a buyer waits two days for their card. Advice that applies a timelock uniformly has not looked at where these functions are called from.
+
+**4. On-chain rate limits.** A daily cap on `burnCard` and `mintBatch`. A leaked key still does damage but cannot drain everything in one block — which protects us while nobody is watching, without needing to win any race.
+
+**5. A guardian role holding `pause()`**, on a cold key separate from operations. **Not** loosely accessible: a pause anyone can call is a button that stops the platform, and someone will press it for fun.
+
+### Rejected
+
+**Soft burn** — making dismantle reversible. The cost is not architectural purity, it is the credibility of the Crystal economy: every Crystal in existence corresponds to a card that was genuinely destroyed (ADR-026, and ADR-024 as amended), and the README promises a permanent on-chain burn. Reversibility unties Crystal from scarcity.
+
+**`Ownable2Step` as a security measure.** It prevents mistyped addresses, not theft — an attacker controls the destination and can accept the transfer themselves. Worth having; not a mitigation.
+
+### Recovery, if the race is lost
+
+A new contract returns nothing. Stolen tokens stay on the old contract at the attacker's address, and the attacker keeps the old key and can go on minting there forever. What a migration really means is **re-minting** equivalents to the rightful owners, which requires knowing who they were **before** the compromise — so an append-only, tamper-evident ownership snapshot is what recovery actually depends on. Not as evidence, but as the only trustworthy source to re-mint from, since the live database may have been written to by the attacker.
+
+And the cost that is easiest to overlook: **re-minting is a custodial act**. A user who exported to their own wallet precisely so Gachard could not touch their card would end up holding a worthless token on a dead contract, needing to trust Gachard to issue a replacement. The self-custody promise inverts at exactly the moment it matters most. That is the strongest argument for remedy 1 above, and for treating a second dead contract as a genuine last resort.
+
+### Consequence for the submission
+
+This is stated in the submission rather than hidden. A project that can describe its own worst case precisely is more credible than one claiming not to have one — and that claim would not survive anyone reading `marketplaceTransfer`.
