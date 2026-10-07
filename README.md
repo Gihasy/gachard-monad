@@ -379,6 +379,7 @@ forge script script/DeployPackEntropy.s.sol --rpc-url monad_testnet --broadcast
    - `RPC_URL`: Monad Testnet RPC URL
    - `CHAIN_ID`: Monad Testnet Chain ID (10143)
    - `ENCRYPTION_SECRET_KEY`: AES-256-GCM key (min 32 chars)
+   - `EMERGENCY_OWNER`: cold wallet that contract ownership is moved to if the admin key leaks. Required by `scripts/emergency-transfer-ownership.ts`, which refuses to run without it ([incident runbook](docs/INCIDENT-RUNBOOK.md))
     - `ADMIN_USERNAME` / `ADMIN_PASSWORD`, Admin console credentials
     - `NEXT_PUBLIC_PRIVY_APP_ID`: Privy App ID for embedded wallet (optional)
    - `NEXT_PUBLIC_CONTRACT_ADDRESS`: GachardCard address for client-side links (admin panel)
@@ -430,6 +431,50 @@ Compiler: Solc 0.8.28 + EVM cancun + via_ir
 ```
 
 Test coverage: mint, print, redeem, transfer, burn, verification, access control, events, error handling, Pyth Entropy integration (20 tests).
+
+## Security
+
+Stated as a threat model rather than a claim of safety, because the claim
+would not survive anyone reading the contract.
+
+**What holds.** A request is authenticated by one signed, httpOnly session
+cookie and nothing else (ADR-032). The admin console is readable without an
+account so the print-to-approval flow can be followed, but its routes withhold
+the people in that flow — email, recipient name, phone, address and the redeem
+code reach a signed-in admin only, and the header that decides this is stripped
+from every incoming request before the gate sets it. Custodial keys are
+encrypted at rest with AES-256-GCM.
+
+**The known gap.** The admin wallet is `owner()` of `GachardCard`, and
+`marketplaceTransfer` takes no signature from the card's holder. An exported
+card is `Exported` only in MongoDB — on chain it is still `Digital`, and
+transfers are blocked for `Vaulted` alone. So the self-custody path does not
+yet protect a card from Gachard's own key, which is not what ADR-031 promises.
+Closing that is the first item for the next contract: `marketplaceTransfer`
+requiring an EIP-712 signature from the holder, which turns bounded damage into
+impossible theft.
+
+A token minted by a stolen key is, separately, worthless inside Gachard: every
+action starts from a `cards` document, only `/api/mint` creates one, and
+nothing creates one by observing the chain. It cannot be sold, dismantled or
+printed.
+
+**What is built and rehearsed.** The admin console compares `nextTokenId`
+against the mints Gachard recorded and goes loud when tokens appear that
+nothing accounts for. `scripts/emergency-transfer-ownership.ts --confirm` moves
+both contracts to a cold wallet in one command; without `--confirm` it prints
+the plan and stops. Both were exercised for real on 7 October 2026 — ownership
+moved and was handed back — which is how the runbook came to document that
+`cast` is not on PowerShell's PATH and that a wallet extension holds the
+Ledger's USB connection.
+
+**What is deferred, and why.** The contract fixes are ordered in ADR-036 and
+deliberately not shipped before the submission: one week left, a demo still
+unrecorded, one dead contract already paid for in a previous migration, and
+exposure of a single testnet account holding nothing of value. Redeploying now
+would trade a mapped risk for an unmapped one.
+
+Full detail: [ADR-036](DECISIONS.md) and [`docs/INCIDENT-RUNBOOK.md`](docs/INCIDENT-RUNBOOK.md).
 
 ## Pyth Entropy Integration
 
