@@ -349,6 +349,8 @@ The rule above says public endpoints do not emit user identifiers, and `/api/sca
 
 Names are ASCII-only and some are reserved, because a collector named "Gachard Vault" could make a provenance row look like the platform held a card it never did, and a Cyrillic а passes any blocklist written in Latin letters — ADR-033's impersonation problem by another door. Names are unique case-insensitively, because the reason to show a name is to say who held a card, and a shared name says nothing.
 
+A name can be made private. Scans then show the anonymous label, but the name stays reserved: hiding a name and giving it up are different acts, and a collector who goes quiet for a week must not come back to find someone else wearing their name on every card they ever held.
+
 The rule this leaves, sharper than the one above: **a field derived from personal data is personal data.** Check what a public field is made of, not just what it is called.
 
 **Note, 23 September 2026: the gate moved from `middleware.ts` to `proxy.ts`.**

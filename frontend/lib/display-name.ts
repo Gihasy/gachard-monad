@@ -29,6 +29,13 @@
  * `displayNameKey`. Showing names exists to say who held a card; two people
  * sharing one makes that claim worthless, and lets someone take a known
  * collector's name to borrow their reputation.
+ *
+ * **Private keeps the claim.** A collector can hide their name, and scans then
+ * show the anonymous label — but the name stays theirs, because `displayNameKey`
+ * stays set and the unique index keeps refusing it to everyone else. Hiding a
+ * name must not be the same act as giving it up, or a collector who goes
+ * private for a week comes back to find someone else wearing their name on
+ * every card they ever held.
  */
 import { createHmac } from "crypto";
 
@@ -90,8 +97,13 @@ export function anonymousLabel(userId: string): string {
 }
 
 /** What a user is called on a public surface. Never their username. */
-export function publicLabel(user: { _id: { toString(): string }; displayName?: unknown }): string {
-  return typeof user.displayName === "string" && user.displayName.length > 0
-    ? user.displayName
+export function publicLabel(user: {
+  _id: { toString(): string };
+  displayName?: unknown;
+  displayNameHidden?: unknown;
+}): string {
+  const named = typeof user.displayName === "string" && user.displayName.length > 0;
+  return named && user.displayNameHidden !== true
+    ? (user.displayName as string)
     : anonymousLabel(user._id.toString());
 }

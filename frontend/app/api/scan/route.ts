@@ -113,10 +113,10 @@ export async function GET(request: Request) {
       const patterns = Array.from(allAddresses).map((a) => new RegExp(`^${a}$`, "i"));
       const relevantUsers = await usersCollection
         .find({ $or: [{ walletAddress: { $in: patterns } }, { privyWalletAddress: { $in: patterns } }] })
-        .project({ _id: 1, displayName: 1, walletAddress: 1, privyWalletAddress: 1 })
+        .project({ _id: 1, displayName: 1, displayNameHidden: 1, walletAddress: 1, privyWalletAddress: 1 })
         .toArray();
       for (const u of relevantUsers) {
-        const label = publicLabel(u as { _id: { toString(): string }; displayName?: unknown });
+        const label = publicLabel(u as { _id: { toString(): string }; displayName?: unknown; displayNameHidden?: unknown });
         if (typeof u.walletAddress === "string") addressToLabel.set(u.walletAddress.toLowerCase(), label);
         if (typeof u.privyWalletAddress === "string") addressToLabel.set(u.privyWalletAddress.toLowerCase(), label);
       }

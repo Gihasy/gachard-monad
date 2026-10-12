@@ -1,9 +1,16 @@
 /**
  * Read or set the name a collector is shown by on public surfaces.
  *
- * GET returns the current name and the anonymous label used when none is set,
- * so the profile can show the user exactly what a stranger scanning their card
- * would see. POST sets it, or clears it when sent an empty string.
+ * GET returns the name, whether it is hidden, and the anonymous label, so the
+ * profile can show the user exactly what a stranger scanning their card sees.
+ *
+ * POST takes one of:
+ *   { displayName: "Card Hunter" }  claim or rename. A new name starts public.
+ *   { hidden: true | false }        hide or show the name. It stays reserved
+ *                                   while hidden — that is the point.
+ *   { displayName: "" }             release the name entirely, so someone
+ *                                   else may take it. Not offered in the UI;
+ *                                   kept so a name can be given up on request.
  *
  * Rules live in `lib/display-name.ts`. Uniqueness is enforced by the database
  * index rather than a lookup first, because a lookup followed by a write is a
@@ -24,6 +31,7 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       displayName: typeof user.displayName === "string" ? user.displayName : null,
+      hidden: user.displayNameHidden === true,
       fallback: anonymousLabel(user._id.toString()),
     },
     { headers: NO_STORE }
@@ -49,14 +57,30 @@ export async function POST(request: Request) {
   const raw = body?.displayName;
   const users = await getCollection("users");
 
+  // Visibility only. The name and its key are untouched, so the unique index
+  // goes on refusing it to everyone else while it is hidden.
+  if (typeof body?.hidden === "boolean" && raw === undefined) {
+    if (typeof user.displayName !== "string") {
+      return NextResponse.json(
+        { error: "Choose a name before changing its visibility." },
+        { status: 400, headers: NO_STORE }
+      );
+    }
+    await users.updateOne({ _id: user._id }, { $set: { displayNameHidden: body.hidden } });
+    return NextResponse.json(
+      { displayName: user.displayName, hidden: body.hidden, fallback: anonymousLabel(userId) },
+      { headers: NO_STORE }
+    );
+  }
+
   // Empty means "go back to the anonymous label".
   if (raw === "" || raw === null) {
     await users.updateOne(
       { _id: user._id },
-      { $unset: { displayName: "", displayNameKey: "" } }
+      { $unset: { displayName: "", displayNameKey: "", displayNameHidden: "" } }
     );
     return NextResponse.json(
-      { displayName: null, fallback: anonymousLabel(userId) },
+      { displayName: null, hidden: false, fallback: anonymousLabel(userId) },
       { headers: NO_STORE }
     );
   }
@@ -67,9 +91,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    // A new name starts public: choosing one is a decision to be seen by it.
     await users.updateOne(
       { _id: user._id },
-      { $set: { displayName: checked.name, displayNameKey: checked.key } }
+      { $set: { displayName: checked.name, displayNameKey: checked.key, displayNameHidden: false } }
     );
   } catch (e) {
     if ((e as { code?: number })?.code === 11000) {
@@ -82,7 +107,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(
-    { displayName: checked.name, fallback: anonymousLabel(userId) },
+    { displayName: checked.name, hidden: false, fallback: anonymousLabel(userId) },
     { headers: NO_STORE }
   );
 }

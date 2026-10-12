@@ -565,7 +565,16 @@ function group(title: string) { results.push(`\n${title}`); }
   check("the scan shows the chosen name", scanNamed.includes(PICKED));
   check("the scan never shows the username", !scanNamed.includes("@suite") && !scanNamed.includes('"suite"'));
 
-  // A second account cannot take the same name, whatever the case.
+  // Private hides the name from scans but keeps it reserved. Hiding a name
+  // and giving it up are different acts; a collector who goes quiet for a week
+  // must not come back to find someone else wearing their name.
+  const hid = await (await post("/api/user/display-name", { hidden: true }, session)).json();
+  check("a name can be made private", hid.hidden === true && hid.displayName === PICKED);
+  const scanHidden = await (await get("/api/scan?cardId=suite-0")).text();
+  check("a private name is not shown on scans", !scanHidden.includes(PICKED));
+  check("scans show the anonymous label instead", scanHidden.includes(nm0.fallback));
+
+  // A second account tries to take the name while it is private.
   const otherId = new ObjectId();
   await db.collection("users").insertOne({
     _id: otherId, email: "suite-other@gachard.test", username: "suite-other",
@@ -575,14 +584,21 @@ function group(title: string) { results.push(`\n${title}`); }
   const opl = `${otherId.toString()}.${ots}`;
   const otherSession = `gachard_session=${opl}.${createHmac("sha256", Buffer.from(process.env.ENCRYPTION_SECRET_KEY!, "utf8")).update(opl).digest("hex")}`;
   const dup = await post("/api/user/display-name", { displayName: PICKED.toUpperCase() }, otherSession);
-  check("a name already taken is refused, ignoring case", dup.status === 409, String(dup.status));
-  await db.collection("users").deleteOne({ _id: otherId });
-  await db.collection("rate_limits").deleteMany({ userId: otherId.toString() });
+  check("a private name cannot be claimed by anyone else", dup.status === 409, String(dup.status));
 
+  const shown = await (await post("/api/user/display-name", { hidden: false }, session)).json();
+  check("making it public again restores it", shown.hidden === false);
+  check("and scans show it again", (await (await get("/api/scan?cardId=suite-0")).text()).includes(PICKED));
+
+  // Releasing is the only thing that frees a name.
   const cleared = await (await post("/api/user/display-name", { displayName: "" }, session)).json();
-  check("clearing returns to the anonymous label", cleared.displayName === null);
+  check("releasing a name returns to the anonymous label", cleared.displayName === null);
   const scanAnon = await (await get("/api/scan?cardId=suite-0")).text();
   check("the scan then shows the anonymous label", scanAnon.includes(nm0.fallback));
+  const claimed = await post("/api/user/display-name", { displayName: PICKED }, otherSession);
+  check("once released, someone else may take it", claimed.status === 200, String(claimed.status));
+  await db.collection("users").deleteOne({ _id: otherId });
+  await db.collection("rate_limits").deleteMany({ userId: otherId.toString() });
 
   // ---- cleanup ----
   await db.collection("cards").deleteMany({ cardId: { $regex: "^suite-" } });

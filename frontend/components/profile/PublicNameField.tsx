@@ -11,11 +11,17 @@
  *
  * The username is not offered as a default or a suggestion. It is the email's
  * local part, and keeping it off public pages is the reason this field exists.
+ *
+ * Once chosen, a name can be made private: scans show the anonymous label, but
+ * the name stays reserved for its owner. There is deliberately no "remove"
+ * button here — hiding and giving up a name are different acts, and only the
+ * first is something a person usually means when they want to go quiet.
  */
 import { useEffect, useState } from "react";
 
 export default function PublicNameField() {
   const [name, setName] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
   const [fallback, setFallback] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -30,6 +36,7 @@ export default function PublicNameField() {
       .then((d) => {
         if (cancelled || d.error) return;
         setName(d.displayName);
+        setHidden(d.hidden === true);
         setFallback(d.fallback);
       })
       .catch(() => {})
@@ -39,7 +46,7 @@ export default function PublicNameField() {
     };
   }, []);
 
-  const save = async (value: string) => {
+  const send = async (body: { displayName: string } | { hidden: boolean }) => {
     setSaving(true);
     setError(null);
     try {
@@ -47,11 +54,12 @@ export default function PublicNameField() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: value }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Could not save that name.");
       setName(d.displayName);
+      setHidden(d.hidden === true);
       setFallback(d.fallback);
       setEditing(false);
     } catch (e) {
@@ -60,6 +68,8 @@ export default function PublicNameField() {
       setSaving(false);
     }
   };
+
+  const save = (value: string) => send({ displayName: value });
 
   if (!loaded) return null;
 
@@ -108,9 +118,20 @@ export default function PublicNameField() {
   return (
     <div className="mt-1.5 flex items-center gap-2 flex-wrap" data-testid="public-name">
       <span className="text-[0.65rem] uppercase tracking-widest text-white/40">Public name</span>
-      <span className={`text-sm ${name ? "text-white/90" : "text-white/50"}`} data-testid="public-name-value">
+      <span className={`text-sm ${name && !hidden ? "text-white/90" : "text-white/50"}`} data-testid="public-name-value">
         {name ?? fallback}
       </span>
+      {name && (
+        <span
+          className="text-[0.55rem] uppercase tracking-widest px-1.5 py-0.5 rounded"
+          style={hidden
+            ? { background: "rgba(255,255,255,0.06)", color: "var(--text-tertiary)" }
+            : { background: "rgba(0,255,136,0.12)", color: "#00ff88" }}
+          data-testid="public-name-visibility"
+        >
+          {hidden ? "Private" : "Public"}
+        </span>
+      )}
       <button
         onClick={() => {
           setDraft(name ?? "");
@@ -124,17 +145,24 @@ export default function PublicNameField() {
       </button>
       {name && (
         <button
-          onClick={() => save("")}
+          onClick={() => send({ hidden: !hidden })}
           disabled={saving}
-          className="text-[0.65rem] underline underline-offset-2 text-white/40 hover:text-white/70"
-          title="Go back to an anonymous label"
+          className="text-[0.65rem] underline underline-offset-2 text-white/40 hover:text-white/70 disabled:opacity-50"
+          data-testid="public-name-toggle"
         >
-          Stay anonymous
+          {hidden ? "Make public" : "Make private"}
         </button>
       )}
       <p className="w-full text-[0.65rem] text-white/35">
-        Anyone who scans one of your cards sees this in its history.
+        {name && hidden
+          ? `Private. Scans of your cards show ${fallback}, and the name stays reserved for you.`
+          : "Anyone who scans one of your cards sees this in its history."}
       </p>
+      {error && (
+        <p className="w-full text-[0.65rem]" style={{ color: "var(--aurora-pink)" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
