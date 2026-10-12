@@ -17,6 +17,12 @@ for (const l of fs.readFileSync(path.resolve(__dirname, "../.env.local"), "utf-8
   }
 }
 
+/** Every transaction a suite run can create: fixture tokens live in 970000-970999. */
+const SUITE_TOKENS = { $gte: 970000, $lt: 971000 };
+const SUITE_TX = {
+  $or: [{ tokenId: SUITE_TOKENS }, { tokenIds: { $elemMatch: SUITE_TOKENS } }, { privyTxId: { $regex: "^suite-" } }],
+};
+
 const BASE = process.env.SUITE_BASE ?? "http://localhost:3100";
 const EMAIL = "suite@gachard.test";
 // A real address shape. An earlier version used a readable placeholder with
@@ -60,6 +66,11 @@ function group(title: string) { results.push(`\n${title}`); }
   await db.collection("cards").deleteMany({ ownerAddress: OWNER });
   await db.collection("listings").deleteMany({ listingId: { $regex: "^suite-" } });
   await db.collection("users").deleteMany({ email: EMAIL });
+  // Transactions too, by the fixture token range. They are cleaned by userId
+  // at the end, and the userId is new every run, so a run that crashed midway
+  // left its rows for every later run to count: group N then saw 16 history
+  // rows instead of 8. Real tokens are numbered from 0 and nowhere near this.
+  await db.collection("transactions").deleteMany(SUITE_TX);
 
   const userId = new ObjectId();
   const uid = userId.toString();
@@ -673,6 +684,7 @@ function group(title: string) { results.push(`\n${title}`); }
   await db.collection("users").deleteMany({ email: EMAIL });
   await db.collection("listings").deleteMany({ listingId: { $regex: "^suite-" } });
   await db.collection("transactions").deleteMany({ userId: uid });
+  await db.collection("transactions").deleteMany(SUITE_TX);
   await db.collection("privy_nonces").deleteMany({ userId: uid });
   await db.collection("rate_limits").deleteMany({ userId: uid });
 
@@ -681,6 +693,7 @@ function group(title: string) { results.push(`\n${title}`); }
     (await db.collection("users").countDocuments({ email: EMAIL })) +
     (await db.collection("listings").countDocuments({ listingId: "suite-l1" })) +
     (await db.collection("transactions").countDocuments({ userId: uid })) +
+    (await db.collection("transactions").countDocuments(SUITE_TX)) +
     (await db.collection("privy_nonces").countDocuments({ userId: uid }));
 
   console.log(results.join("\n"));
