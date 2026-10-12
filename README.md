@@ -309,8 +309,9 @@ deployment-specific notes are in [Deployment → Frontend (Vercel)](#frontend-ve
 - **ADR-034**: The marketplace fee belongs to a self-custody marketplace *(proposed, not built)*
 - **ADR-035**: A cosmetics store as the intended Crystal sink *(proposed, not built)*
 - **ADR-036**: What a compromised admin key can do, and the order of the fixes
+- **ADR-037**: Find anomalies by checking state; log only what state cannot show *(proposed, not built)*
 
-The full ADR log is in [`DECISIONS.md`](DECISIONS.md), 36 records covering every
+The full ADR log is in [`DECISIONS.md`](DECISIONS.md), 37 records covering every
 architectural decision, including the ones that were superseded and the known
 limitations of each. The largest decisions also have dedicated specs:
 

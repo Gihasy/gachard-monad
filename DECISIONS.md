@@ -567,3 +567,57 @@ And the cost that is easiest to overlook: **re-minting is a custodial act**. A u
 ### Consequence for the submission
 
 This is stated in the submission rather than hidden. A project that can describe its own worst case precisely is more credible than one claiming not to have one — and that claim would not survive anyone reading `marketplaceTransfer`.
+
+## ADR-037: Find Anomalies by Checking State, and Log Only What State Cannot Show
+
+**Status**: Proposed, 12 October 2026. Nothing here is built. It waits until after the submission deadline (14 October), with one possible exception named at the end.
+
+**Context**: the suggestion was to add logs and tracing so anomalies can be found. Before deciding, it is worth looking at how this project's real anomalies were actually found.
+
+Four of them came up in a single week of October 2026:
+
+- A Privy send was recorded as done with no transaction hash.
+- A marketplace purchase hung forever, because the `pending*` fields it wrote were never read by anything.
+- A card sent back into a Gachard wallet from outside was never noticed.
+- The first supply monitor raised a false alarm, because it counted rows that cleanup had deleted.
+
+None of these would have shown up in a log. No request failed and no error was thrown. Each was **data in a state it should not be in**, and each was found by someone reading the database and the chain by hand.
+
+What exists today:
+
+- `transactions` already serves as an audit trail for mints, trades, transfers and purchases.
+- The admin console has a Pending Cards panel (`/api/admin/pending-cards`), but it covers stuck mints only.
+- The Token Supply Integrity panel (ADR-036) watches for minting nobody accounts for.
+- Application logging is about 108 unstructured `console` calls. They live only in Vercel's runtime logs, which are kept for a short time and cannot be queried for patterns.
+- There is no logger, no error tracker and no tracing library.
+
+**Decision**: anomalies are found mainly by **checking state**, with a small structured event log for what state cannot show. Distributed tracing is not adopted.
+
+**1. State checks, shown in the admin console.** These follow the pattern of the supply panel: each check is a query that answers "is anything in a state it should not be in?" and shows a count, then the rows. In order of value:
+
+1. *Stuck in pending.* Any transaction, card or listing still `pending` after 10 minutes. This widens the Pending Cards panel to cover purchases (`pendingBuyerId`), Privy sends and imports.
+2. *Done without proof.* A confirmed on-chain action whose transaction has no `txHash`.
+3. *Database and chain disagree.* A card whose recorded owner does not hold the token on chain. This samples rather than sweeps, because every check is an RPC read.
+
+**2. A structured `events` collection, for the few things state cannot show.** These are failed or refused requests, which change nothing and so leave no state behind:
+
+- authentication refused
+- rate limit hit
+- admin console unlocked
+- mint, fulfil or refund failed
+
+Each event holds a type, a timestamp, a user id or hashed IP, and an optional reference id. It holds **no email, username or wallet address** (ADR-032: a field derived from personal data is personal data). A TTL index removes events after 30 days. The anomaly signal is a spike in rate rather than any single event, for example many refusals from one source within a minute. The admin console shows counts per hour.
+
+The `console` calls stay where they are. The events log does not replace them; it is the part someone can query.
+
+**3. No distributed tracing.** Tracing earns its cost when one request crosses many services and it is unclear where time or failure went. Gachard is one Next.js app, one database and one chain. An OpenTelemetry setup would add a dependency and a collector to run, and it would not have caught any of the four bugs above. Reconsider when there is a second service.
+
+**Why not a hosted error tracker (Sentry and similar) first?** It is cheap to add and useful for crashes. But a crash is the one kind of failure this project has rarely had: the bugs that mattered looked like success. It is a reasonable later addition, not the first one.
+
+**Consequences**:
+
+- A state check can only find what someone thought to check for. The four checks above are the anomalies already seen; a new kind of failure will still be found by hand the first time, and should then become a check.
+- Check 3 costs RPC reads. If the RPC is down, the check reports "unknown" rather than "all clear". It must never report "all clear" when it could not look.
+- The events collection is new personal-data-adjacent storage. A hashed IP is still linkable within the TTL, which is why the TTL exists.
+
+**Possible exception before the deadline**: check 1 alone, as a wider Pending panel. It is a query against data that already exists, needs no schema change, and catches the class of bug that has cost the most time. Everything else waits.
