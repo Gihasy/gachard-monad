@@ -528,6 +528,8 @@ It is a race, and whoever calls first wins permanently. That is exactly why dete
 
 **Supply integrity check.** `nextTokenId` is public and the card count is a query. A sudden gap between them is rogue minting, visible in minutes. One check, no contract change, alongside the MON balances the admin console already watches.
 
+*As built, 7 October 2026:* the comparison is against a high-water mark, not the card count or the mint records. The first version counted mint transactions, and it fired in production within an hour — clean-slate and test fixtures delete those rows while the tokens stay on chain, so Gachard's own mints read as unexplained. Token ids are sequential, so one number settles it: the highest id Gachard has acknowledged, kept in `chain_baseline` (which nothing deletes) and advanced by the fulfil path with `$max`. Anything the chain has issued above it is unexplained.
+
 **This ADR.** For a project with one user on testnet, the written record is the mitigation that pays. Exposure today is zero; the submission is in a week. Being able to answer "what if your admin key leaks" with the code, the gap, the fix, and the reason it has not shipped yet is worth more than a rushed contract.
 
 ### Not shipping this week

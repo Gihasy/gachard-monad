@@ -228,9 +228,9 @@ stateDiagram-v2
 - **Move to your own wallet** *(optional)*: Send a card out to a Privy wallet only you control, bring it back, or transfer it anywhere. One signature covers a whole selection (`/wallet`)
 
 ### Additional Features
-- **Scan & Verify**: QR code scanning for card authenticity verification
+- **Scan & Verify**: QR code scanning for card authenticity verification. The scan page shows the five most recent transactions and the full history on request. Owners appear by a public name they chose, or as an anonymous "Collector #…" label; usernames and wallet addresses never appear on this public page (ADR-032, amended)
 - **Credit System**: Top up credits to purchase packs
-- **Transaction History**: Full transaction history in Profile page
+- **Transaction History**: The 50 most recent transactions on the Profile page
 - **Unique Card ID**: Each card has a unique hex ID (e.g. `#8a866`)
 - **Invoice ID**: Each transaction has an Invoice ID (e.g. `GC-20260730-a3f1`)
 - **Admin Console**: Manage users, transactions, cards, print requests, monitor MON balances. Every tab has search, filters and sorting matched to what that tab is for. Readable without an account so the print-to-approval flow can be followed, but the people in that flow are not public: personal fields are withheld until an admin signs in, and state-changing routes need credentials
@@ -438,7 +438,10 @@ Stated as a threat model rather than a claim of safety, because the claim
 would not survive anyone reading the contract.
 
 **What holds.** A request is authenticated by one signed, httpOnly session
-cookie and nothing else (ADR-032). The admin console is readable without an
+cookie and nothing else (ADR-032). The public scan page names a card's owners
+by a name they chose or an anonymous label, never by username, because the
+username is built from the email address and a cardId is short enough to
+enumerate. The admin console is readable without an
 account so the print-to-approval flow can be followed, but its routes withhold
 the people in that flow — email, recipient name, phone, address and the redeem
 code reach a signed-in admin only, and the header that decides this is stripped
