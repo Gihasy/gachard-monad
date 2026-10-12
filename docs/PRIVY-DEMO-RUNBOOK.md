@@ -119,7 +119,9 @@ Yang sekarang ditunjukkan, dan lebih kuat karena aktif, bukan pasif:
 1. Buka `/wallet`. Tunjuk kartu **"Gachard access"** berlabel **Allowed**.
 2. Katakan apa adanya: Gachard bisa memindahkan kartu di wallet ini **karena user memberi izin**, dan izin itu yang membuat kartu bisa pulang.
 3. Klik **Withdraw access**. Labelnya berubah jadi **Not allowed**.
-4. Katakan: sekarang Gachard tidak bisa menyentuhnya. Satu klik, oleh user, kapan saja.
+4. Katakan: sekarang aplikasi Gachard tidak bisa mengirim kartu dari wallet ini. Satu klik, oleh user, kapan saja.
+
+   **Jangan katakan "Gachard tidak bisa menyentuhnya sama sekali".** Itu tidak benar di kontrak yang sekarang: `marketplaceTransfer` adalah fungsi owner yang tidak meminta tanda tangan pemegang, jadi kunci admin masih bisa memindahkan kartu Digital dari alamat mana pun, termasuk wallet Privy (ADR-036, dicek 12 Oktober 2026). Yang dicabut oleh Withdraw access adalah jalur aplikasi lewat delegasi Privy. Kalau juri bertanya, jawab apa adanya: perlindungan di level aplikasi sudah ada, penegakan di kontrak dijadwalkan untuk versi kontrak berikutnya.
 5. Klik **Allow** lagi supaya Bagian E bisa jalan.
 
 Mencabut akses di depan kamera membuktikan kendali itu nyata. "Tidak ada tombolnya" hanya membuktikan UI-nya belum dibuat.
