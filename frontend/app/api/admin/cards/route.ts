@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminOnly, isUnlockedAdmin } from "@/lib/admin-tier";
 import { getCollection } from "@/lib/mongodb";
+import { adminLabel } from "@/lib/display-name";
 
 export async function GET(request: Request) {
   // Which card is where is the flow. Whose it is, is not.
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
     const usersCollection = await getCollection("users");
     const cards = await cardsCollection.find({}).toArray();
 
-    // Build address → username map (only for card owners)
+    // Address → the owner's name as the console shows it (only for card owners)
     const ownerAddresses = [...new Set(cards.map((c) => c.ownerAddress?.toLowerCase()).filter(Boolean))];
     const addressToUsername = new Map<string, string>();
     if (ownerAddresses.length > 0) {
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
         .toArray();
       for (const u of owners) {
         if (u.walletAddress) {
-          addressToUsername.set(u.walletAddress.toLowerCase(), `@${u.username}`);
+          addressToUsername.set(u.walletAddress.toLowerCase(), adminLabel(u));
         }
       }
     }
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
       fulfillmentStatus: c.fulfillmentStatus || null,
       ...adminOnly(unlocked, {
         ownerAddress: c.ownerAddress,
-        ownerUsername: c.ownerAddress ? addressToUsername.get(c.ownerAddress.toLowerCase()) || null : null,
+        ownerName: c.ownerAddress ? addressToUsername.get(c.ownerAddress.toLowerCase()) || null : null,
       }),
       createdAt: c.createdAt,
     }));

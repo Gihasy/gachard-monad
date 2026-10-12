@@ -1,3 +1,4 @@
+import { adminLabel } from "@/lib/display-name";
 import { NextResponse } from "next/server";
 import { getCollection } from "@/lib/mongodb";
 import { decrypt } from "@/lib/crypto";
@@ -78,14 +79,14 @@ export async function GET(request: Request) {
         });
 
         // Get redeemer info if code was claimed
-        let redeemer: { username: string; walletAddress: string } | null = null;
+        let redeemer: { name: string; walletAddress: string } | null = null;
         if (codeDoc?.status === "claimed" && codeDoc?.redeemedBy) {
           try {
             const { ObjectId } = await import("mongodb");
             const redeemerDoc = await usersCollection.findOne({ _id: new ObjectId(codeDoc.redeemedBy) } as Record<string, unknown>);
             if (redeemerDoc) {
               redeemer = {
-                username: redeemerDoc.username,
+                name: adminLabel(redeemerDoc),
                 walletAddress: redeemerDoc.walletAddress,
               };
             }
@@ -118,7 +119,7 @@ export async function GET(request: Request) {
             user: user
               ? {
                   email: user.email,
-                  username: user.username,
+                  name: adminLabel(user),
                   walletAddress: user.walletAddress,
                 }
               : null,

@@ -113,6 +113,19 @@ export function mayChangeName(user: object): boolean {
   return (user as { nameChangeGranted?: unknown }).nameChangeGranted === true;
 }
 
+/**
+ * What the admin console calls a user: their public name even when it is
+ * private, or the collector ID until they choose one. The admin sees through
+ * "private" — it hides a name from strangers, not from the operator — but
+ * never the username, which is only the email's local part and is shown
+ * nowhere, so a collector is known by the same name in every panel.
+ */
+export function adminLabel(user: { _id: { toString(): string }; displayName?: unknown }): string {
+  return typeof user.displayName === "string" && user.displayName.length > 0
+    ? user.displayName
+    : anonymousLabel(user._id.toString());
+}
+
 /** What a user is called on a public surface. Never their username. */
 export function publicLabel(user: {
   _id: { toString(): string };

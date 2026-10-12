@@ -444,7 +444,7 @@ function group(title: string) { results.push(`\n${title}`); }
   ];
   const PERSONAL = [
     '"email"', '"recipientName"', '"phone"', '"addressLine1"', '"postalCode"',
-    '"redeemCode"', '"userId"', '"ownerAddress"', '"ownerUsername"', '"redeemer"',
+    '"redeemCode"', '"userId"', '"ownerAddress"', '"ownerName"', '"redeemer"',
   ];
   for (const path of PUBLIC_ADMIN) {
     const body = await (await get(path)).text();
@@ -643,6 +643,9 @@ function group(title: string) { results.push(`\n${title}`); }
       row?.displayName === "Suite Hunter Two" && row?.collectorId === nm0.fallback && row?.displayNameHidden === false,
       JSON.stringify(row));
     check("and not the username", row !== undefined && !("username" in row));
+    const adminCards = await (await fetch(`${BASE}/api/admin/cards`, { headers: { authorization: basic } })).json();
+    const owned = (adminCards.cards ?? []).find((x: { cardId: string }) => x.cardId === "suite-0");
+    check("the Cards panel names the owner the same way", owned?.ownerName === "Suite Hunter Two", JSON.stringify(owned?.ownerName));
   }
   await db.collection("users").deleteOne({ _id: otherId });
   await db.collection("rate_limits").deleteMany({ userId: otherId.toString() });

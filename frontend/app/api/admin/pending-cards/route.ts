@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminOnly, isUnlockedAdmin } from "@/lib/admin-tier";
 import { getCollection, parseObjectId } from "@/lib/mongodb";
+import { adminLabel } from "@/lib/display-name";
 
 /**
  * GET /api/admin/pending-cards
@@ -29,12 +30,12 @@ export async function GET(request: Request) {
       : [];
     const txMap = new Map(txs.map((tx) => [tx._id.toString(), tx]));
 
-    // Get all users for address → username mapping
+    // Address → the owner's name as the console shows it
     const users = await usersCollection.find({}).toArray();
     const addressToUsername = new Map<string, string>();
     for (const u of users) {
       if (u.walletAddress) {
-        addressToUsername.set(u.walletAddress.toLowerCase(), `@${u.username}`);
+        addressToUsername.set(u.walletAddress.toLowerCase(), adminLabel(u));
       }
     }
 
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
         rarityCode: card.rarity,
         ...adminOnly(unlocked, {
           ownerAddress: card.ownerAddress,
-          ownerUsername: card.ownerAddress ? addressToUsername.get(card.ownerAddress.toLowerCase()) || null : null,
+          ownerName: card.ownerAddress ? addressToUsername.get(card.ownerAddress.toLowerCase()) || null : null,
         }),
         txId: card.txId || null,
         txHash: tx?.txHash || null,

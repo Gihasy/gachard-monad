@@ -46,7 +46,7 @@ type AdminCard = {
   // Absent unless an admin is signed in — the server withholds them rather
   // than sending null, so the key itself is missing.
   ownerAddress?: string;
-  ownerUsername?: string | null;
+  ownerName?: string | null;
   createdAt: string;
 };
 
@@ -69,9 +69,9 @@ type PrintRequest = {
   accepted: boolean;
   fulfillmentStatus: string | null;
   shippingAddress?: ShippingAddress | null;
-  user: { email: string; username: string; walletAddress: string } | null;
+  user: { email: string; name: string; walletAddress: string } | null;
   card: { cardId: string | null; claimId: string | null; status: string; rarity: number; templateId: string; fulfillmentStatus: string | null } | null;
-  redeemer?: { username: string; walletAddress: string } | null;
+  redeemer?: { name: string; walletAddress: string } | null;
   txStatus: string;
   createdAt: string;
   updatedAt: string;
@@ -229,7 +229,7 @@ type PendingCard = {
   templateId: string;
   rarity: string;
   rarityCode: number;
-  ownerUsername: string | null;
+  ownerName: string | null;
   txHash: string | null;
   txStatus: string;
   createdAt: string;
@@ -468,7 +468,7 @@ export default function AdminPage() {
       if (fv("cards", "rarity") !== "all" && c.rarity !== Number(fv("cards", "rarity"))) return false;
       const ff = fv("cards", "fulfillment");
       if (ff !== "all" && (c.fulfillmentStatus ?? "none") !== ff) return false;
-      return matches(searchBy.cards, c.cardId, c.tokenId, c.templateId, c.ownerUsername, c.ownerAddress);
+      return matches(searchBy.cards, c.cardId, c.tokenId, c.templateId, c.ownerName, c.ownerAddress);
     })
     .sort((a, b) => {
       switch (sortBy.cards) {
@@ -477,7 +477,7 @@ export default function AdminPage() {
         case "token_desc": return asNum(b.tokenId) - asNum(a.tokenId);
         case "rarity_high": return b.rarity - a.rarity;
         case "rarity_low": return a.rarity - b.rarity;
-        case "owner": return byText(a.ownerUsername, b.ownerUsername);
+        case "owner": return byText(a.ownerName, b.ownerName);
         default: return asTime(b.createdAt) - asTime(a.createdAt);
       }
     });
@@ -510,7 +510,7 @@ export default function AdminPage() {
       if (ff !== "all" && (p.fulfillmentStatus ?? "none") !== ff) return false;
       return matches(
         searchBy.prints,
-        p.tokenId, p.redeemCode, p.user?.username, p.user?.email,
+        p.tokenId, p.redeemCode, p.user?.name, p.user?.email,
         p.shippingAddress?.recipientName, p.shippingAddress?.city
       );
     })
@@ -531,7 +531,7 @@ export default function AdminPage() {
       if (st === "stale" && !c.isStale) return false;
       if (st === "fresh" && c.isStale) return false;
       if (fv("health", "rarity") !== "all" && c.rarityCode !== Number(fv("health", "rarity"))) return false;
-      return matches(searchBy.health, c.cardId, c.tokenId, c.templateId, c.ownerUsername, c.txHash, c.txStatus);
+      return matches(searchBy.health, c.cardId, c.tokenId, c.templateId, c.ownerName, c.txHash, c.txStatus);
     })
     .sort((a, b) => {
       switch (sortBy.health) {
@@ -1422,7 +1422,7 @@ function CardsTable({ cards }: { cards: AdminCard[] }) {
               ) : <span className="text-white/30">—</span>}
             </td>
             <td className="px-4 py-3.5 text-xs">
-              {c.ownerUsername && <div className="text-white/90 font-medium mb-0.5">{c.ownerUsername}</div>}
+              {c.ownerName && <div className="text-white/90 font-medium mb-0.5">{c.ownerName}</div>}
               {!("ownerAddress" in c) && <Withheld label="Owner locked" />}
               {c.ownerAddress ? (
                 <div className="flex items-center gap-1.5">
@@ -1532,7 +1532,7 @@ function PrintRequestsTable({ prints, onAccept }: { prints: PrintRequest[]; onAc
                 {pr.user ? (
                   <>
                     <p className="text-sm text-white/90">{pr.user.email}</p>
-                    <p className="text-xs text-white/60">@{pr.user.username}</p>
+                    <p className="text-xs text-white/60">{pr.user.name}</p>
                     <p className="text-[0.6rem] font-mono text-white/35 mt-1">
                       {pr.user.walletAddress.slice(0, 10)}...{pr.user.walletAddress.slice(-6)}
                     </p>
@@ -1552,7 +1552,7 @@ function PrintRequestsTable({ prints, onAccept }: { prints: PrintRequest[]; onAc
                 {pr.codeStatus === "claimed" && pr.redeemer && (
                   <div className="mt-1.5 space-y-0.5">
                     <p className="text-[0.6rem] text-white/50">
-                      Claimed by <span className="text-white/80 font-medium">@{pr.redeemer.username}</span>
+                      Claimed by <span className="text-white/80 font-medium">{pr.redeemer.name}</span>
                     </p>
                     <p className="text-[0.55rem] font-mono text-white/35">
                       {pr.redeemer.walletAddress.slice(0, 10)}...{pr.redeemer.walletAddress.slice(-6)}
@@ -1730,7 +1730,7 @@ function HealthTable({
                 <span className={`tag tag-${card.rarity.toLowerCase()} text-[0.55rem]`}>{card.rarity}</span>
               </td>
               <td className="px-4 py-3 text-xs">
-                {card.ownerUsername && <div className="text-white/80">{card.ownerUsername}</div>}
+                {card.ownerName && <div className="text-white/80">{card.ownerName}</div>}
                 {!("ownerAddress" in card) && <Withheld label="Owner locked" />}
               </td>
               <td className="px-4 py-3">
