@@ -634,6 +634,16 @@ function group(title: string) { results.push(`\n${title}`); }
   check("but not a name someone else now holds", taken.status === 409, String(taken.status));
   const reclaim = await post("/api/user/display-name", { displayName: "Suite Hunter Two" }, session);
   check("a released name is free again", reclaim.status === 200, String(reclaim.status));
+  // The admin Users panel shows the same name and label, not the username.
+  if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
+    const basic = "Basic " + Buffer.from(`${process.env.ADMIN_USERNAME}:${process.env.ADMIN_PASSWORD}`).toString("base64");
+    const list = await (await fetch(`${BASE}/api/admin/users`, { headers: { authorization: basic } })).json();
+    const row = (list.users ?? []).find((x: { id: string }) => x.id === uid);
+    check("the admin Users panel shows the public name and collector ID",
+      row?.displayName === "Suite Hunter Two" && row?.collectorId === nm0.fallback && row?.displayNameHidden === false,
+      JSON.stringify(row));
+    check("and not the username", row !== undefined && !("username" in row));
+  }
   await db.collection("users").deleteOne({ _id: otherId });
   await db.collection("rate_limits").deleteMany({ userId: otherId.toString() });
 

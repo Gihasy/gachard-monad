@@ -7,7 +7,9 @@ import PageShell from "@/components/PageShell";
 type AdminUser = {
   id: string;
   email: string;
-  username: string;
+  displayName: string | null;
+  displayNameHidden: boolean;
+  collectorId: string;
   walletAddress: string;
   createdAt: string;
 };
@@ -542,12 +544,12 @@ export default function AdminPage() {
 
   // ── Users ──
   const filteredUsers = users
-    .filter((u) => matches(searchBy.users, u.email, u.username, u.walletAddress))
+    .filter((u) => matches(searchBy.users, u.email, u.displayName, u.collectorId, u.walletAddress))
     .sort((a, b) => {
       switch (sortBy.users) {
         case "oldest": return asTime(a.createdAt) - asTime(b.createdAt);
-        case "username": return byText(a.username, b.username);
-        case "username_desc": return byText(b.username, a.username);
+        case "username": return byText(a.displayName ?? a.collectorId, b.displayName ?? b.collectorId);
+        case "username_desc": return byText(b.displayName ?? b.collectorId, a.displayName ?? a.collectorId);
         case "email": return byText(a.email, b.email);
         default: return asTime(b.createdAt) - asTime(a.createdAt);
       }
@@ -697,12 +699,12 @@ export default function AdminPage() {
                 testId="users-controls"
                 search={searchBy.users}
                 onSearchChange={onSearch("users")}
-                searchPlaceholder="Search email, username, wallet…"
+                searchPlaceholder="Search email, public name, collector ID, wallet…"
                 sortOptions={[
                   { value: "newest", label: "Newest joined" },
                   { value: "oldest", label: "Oldest joined" },
-                  { value: "username", label: "Username A–Z" },
-                  { value: "username_desc", label: "Username Z–A" },
+                  { value: "username", label: "Public name A–Z" },
+                  { value: "username_desc", label: "Public name Z–A" },
                   { value: "email", label: "Email A–Z" },
                 ]}
                 sort={sortBy.users}
@@ -1217,14 +1219,31 @@ const rowStyle = { borderBottom: "1px solid var(--border-subtle)" };
 /* ─── Users ─── */
 function UsersTable({ users }: { users: AdminUser[] }) {
   return (
-    <TableShell head={<><TH>Email</TH><TH>Username</TH><TH>Wallet Address</TH><TH>Joined</TH></>}>
+    <TableShell head={<><TH>Email</TH><TH>Public Name</TH><TH>Collector ID</TH><TH>Wallet Address</TH><TH>Joined</TH></>}>
       {users.length === 0 ? (
-        <tr><td colSpan={4} className="p-8 text-center text-white/40">No users found</td></tr>
+        <tr><td colSpan={5} className="p-8 text-center text-white/40">No users found</td></tr>
       ) : (
         users.map((u) => (
           <tr key={u.id} style={rowStyle} className="hover:bg-white/[0.03] transition-colors">
             <td className="px-4 py-3.5 text-white/90">{u.email}</td>
-            <td className="px-4 py-3.5" style={{ color: "var(--cosmic-violet)" }}>@{u.username}</td>
+            <td className="px-4 py-3.5">
+              {u.displayName ? (
+                <span className="inline-flex items-center gap-2">
+                  <span style={{ color: "var(--cosmic-violet)" }}>{u.displayName}</span>
+                  <span
+                    className="text-[0.55rem] uppercase tracking-widest px-1.5 py-0.5 rounded"
+                    style={u.displayNameHidden
+                      ? { background: "rgba(255,255,255,0.06)", color: "var(--text-tertiary)" }
+                      : { background: "rgba(0,255,136,0.12)", color: "#00ff88" }}
+                  >
+                    {u.displayNameHidden ? "Private" : "Public"}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-white/35 italic">Not chosen</span>
+              )}
+            </td>
+            <td className="px-4 py-3.5 font-mono text-xs text-white/70">{u.collectorId}</td>
             <td className="px-4 py-3.5 font-mono text-xs text-white/60">{u.walletAddress}</td>
             <td className="px-4 py-3.5 text-white/50">{new Date(u.createdAt).toLocaleDateString()}</td>
           </tr>
@@ -1993,7 +2012,7 @@ function DismantleTable({ txs, cards, users }: { txs: AdminTx[]; cards: AdminCar
           return (
             <tr key={tx.id} style={rowStyle} className="hover:bg-white/[0.03] transition-colors">
               <td className="px-4 py-3.5 text-white/50 whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
-              <td className="px-4 py-3.5 text-white/90">{user?.username ?? tx.userId ?? <Withheld />}</td>
+              <td className="px-4 py-3.5 text-white/90">{user ? user.displayName ?? user.collectorId : tx.userId ?? <Withheld />}</td>
               <td className="px-4 py-3.5 text-white/90">{cardName}</td>
               <td className="px-4 py-3.5">
                 <span
