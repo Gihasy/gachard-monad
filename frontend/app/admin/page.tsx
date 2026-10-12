@@ -615,8 +615,7 @@ export default function AdminPage() {
       description="Transparent proof of blockchain integration — view wallet addresses, verify on-chain transactions via Monad Explorer, and track every card's journey from mint to physical redemption."
     >
       {/* Balance Cards */}
-      {balances && <BalanceCards balances={balances} />}
-      {inFlight && <InFlightPanel report={inFlight} />}
+      {(balances || inFlight) && <HealthSection balances={balances} inFlight={inFlight} />}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-8 gap-4 mb-8">
@@ -1765,7 +1764,7 @@ function InFlightPanel({ report }: { report: InFlight }) {
   const age = (m: number) => (m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`);
   return (
     <div
-      className="glass p-4 mb-8"
+      className={`glass p-4 ${alarm ? "sm:col-span-2" : ""}`}
       style={alarm ? { borderColor: "rgba(255,196,102,0.5)", background: "rgba(255,196,102,0.05)" } : undefined}
       data-testid="in-flight"
     >
@@ -1836,7 +1835,100 @@ function InFlightPanel({ report }: { report: InFlight }) {
 }
 
 /* ─── Balance Cards ─── */
-function BalanceCards({ balances }: { balances: { adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; highestKnownTokenId: number; unexplained: number; updatedAt: string | null; checkedAt: string } | null } }) {
+type Balances = { adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; highestKnownTokenId: number; unexplained: number; updatedAt: string | null; checkedAt: string } | null };
+
+// Below these the balance cards turn gold; the health section opens itself.
+const ADMIN_LOW_MON = 0.5;
+const ENTROPY_LOW_MON = 0.2;
+
+/* ─── System health ─── */
+/**
+ * Balances, supply integrity and stuck operations, folded away by default.
+ *
+ * These are checked rarely and read the same almost every time, so they
+ * should not push the tables down the page. But folding must never hide a
+ * problem: the closed header still carries one line of status, and any alarm
+ * opens the section on load regardless of what was chosen last time.
+ */
+function HealthSection({ balances, inFlight }: { balances: Balances | null; inFlight: InFlight | null }) {
+  const supplyAlarm = (balances?.supply?.unexplained ?? 0) > 0;
+  const stuckAlarm = (inFlight?.stuck ?? 0) > 0;
+  const lowAdmin = balances ? parseFloat(balances.adminWallet.balanceMON) < ADMIN_LOW_MON : false;
+  const lowEntropy = balances ? parseFloat(balances.packEntropy.balanceMON) < ENTROPY_LOW_MON : false;
+  const alarm = supplyAlarm || stuckAlarm || lowAdmin || lowEntropy;
+
+  const KEY = "gachard-admin-health-open";
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (alarm) return setOpen(true);
+    try {
+      setOpen(localStorage.getItem(KEY) === "1");
+    } catch {
+      /* storage unavailable: stay closed */
+    }
+  }, [alarm]);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem(KEY, next ? "1" : "0");
+    } catch {
+      /* not remembered, still works */
+    }
+  };
+
+  const chip = (label: string, bad: boolean, key: string) => (
+    <span
+      key={key}
+      className="text-[0.6rem] px-2 py-0.5 rounded-full whitespace-nowrap"
+      style={bad
+        ? { background: "rgba(255,107,186,0.15)", color: "var(--aurora-pink)" }
+        : { background: "rgba(255,255,255,0.05)", color: "var(--text-tertiary)" }}
+    >
+      {label}
+    </span>
+  );
+
+  return (
+    <div className="mb-8" data-testid="system-health">
+      <button
+        onClick={toggle}
+        aria-expanded={open}
+        className="glass w-full px-4 py-3 flex items-center gap-3 flex-wrap text-left hover:bg-white/[0.03] transition-colors"
+        style={alarm ? { borderColor: "rgba(255,107,186,0.45)" } : undefined}
+        data-testid="system-health-toggle"
+      >
+        <span className="text-[0.6rem] uppercase tracking-widest text-white/50">System Health</span>
+        <span className="flex items-center gap-1.5 flex-wrap flex-1">
+          {balances && chip(`Gas ${parseFloat(balances.adminWallet.balanceMON).toFixed(2)} MON`, lowAdmin, "gas")}
+          {balances && chip(`Entropy ${parseFloat(balances.packEntropy.balanceMON).toFixed(2)} MON`, lowEntropy, "entropy")}
+          {balances?.supply && chip(supplyAlarm ? "Unexplained minting" : "Supply accounted for", supplyAlarm, "supply")}
+          {inFlight && chip(stuckAlarm ? `${inFlight.stuck} stuck` : "Nothing stuck", stuckAlarm, "stuck")}
+        </span>
+        <svg
+          width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round"
+          className="text-white/50 transition-transform shrink-0"
+          style={{ transform: open ? "rotate(180deg)" : undefined }}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="mt-3">
+          {balances ? (
+            <BalanceCards balances={balances} inFlight={inFlight} />
+          ) : (
+            inFlight && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><InFlightPanel report={inFlight} /></div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BalanceCards({ balances, inFlight }: { balances: Balances; inFlight?: InFlight | null }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, label: string) => {
@@ -1859,14 +1951,14 @@ function BalanceCards({ balances }: { balances: { adminWallet: { address: string
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {/* Admin Wallet */}
       <div className="glass p-4">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[0.6rem] uppercase tracking-widest text-white/40">Admin Wallet (Gas)</p>
           <span className="text-[0.55rem] px-2 py-0.5 rounded-full" style={{ background: "rgba(0,204,255,0.15)", color: "var(--electric-blue)" }}>Sponsor</span>
         </div>
-        <p className="font-display text-2xl mb-2" style={{ color: getBalanceColor(balances.adminWallet.balanceMON, 0.5) }}>
+        <p className="font-display text-2xl mb-2" style={{ color: getBalanceColor(balances.adminWallet.balanceMON, ADMIN_LOW_MON) }}>
           {formatMON(balances.adminWallet.balanceMON)} <span className="text-sm text-white/40">MON</span>
         </p>
         <button
@@ -1889,7 +1981,7 @@ function BalanceCards({ balances }: { balances: { adminWallet: { address: string
           <p className="text-[0.6rem] uppercase tracking-widest text-white/40">PackEntropy (Pyth Fee)</p>
           <span className="text-[0.55rem] px-2 py-0.5 rounded-full" style={{ background: "rgba(184,172,255,0.15)", color: "var(--cosmic-violet)" }}>Entropy</span>
         </div>
-        <p className="font-display text-2xl mb-2" style={{ color: getBalanceColor(balances.packEntropy.balanceMON, 0.2) }}>
+        <p className="font-display text-2xl mb-2" style={{ color: getBalanceColor(balances.packEntropy.balanceMON, ENTROPY_LOW_MON) }}>
           {formatMON(balances.packEntropy.balanceMON)} <span className="text-sm text-white/40">MON</span>
         </p>
         <button
@@ -1911,7 +2003,8 @@ function BalanceCards({ balances }: { balances: { adminWallet: { address: string
           minting that we did not". Loud when it matters, quiet otherwise. */}
       {balances.supply && (
         <div
-          className="glass p-4 sm:col-span-2"
+          // Full width when the stuck panel beside it widens for its table.
+          className={`glass p-4 ${(inFlight?.stuck ?? 0) > 0 ? "sm:col-span-2" : ""}`}
           style={balances.supply.unexplained > 0
             ? { borderColor: "rgba(255,107,186,0.5)", background: "rgba(255,107,186,0.06)" }
             : undefined}
@@ -1956,6 +2049,8 @@ function BalanceCards({ balances }: { balances: { adminWallet: { address: string
           )}
         </div>
       )}
+
+      {inFlight && <InFlightPanel report={inFlight} />}
     </div>
   );
 }
