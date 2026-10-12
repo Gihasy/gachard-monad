@@ -84,7 +84,7 @@ flowchart LR
 
     subgraph PV["Privy · self-custody"]
         direction TB
-        PvWallet["embedded wallet<br/>only the user controls it"]
+        PvWallet["embedded wallet<br/>keys held by the user"]
         PvSign["sponsored signing<br/>Privy pays the gas"]
     end
 
@@ -240,7 +240,7 @@ stateDiagram-v2
 - **AI Anomaly Detection**: Wash-trading detection on marketplace
 - **Support Gachard**: Floating CTA for early supporters, shown on the homepage only
 - **Pyth Entropy**: Provably fair pack randomness with on-chain verifiable RNG
-- **Privy Embedded Wallet**: Optional self-custody wallet. A card can be moved out to a wallet only the user controls, brought back, or transferred anywhere else, with Privy paying the gas (`/wallet`)
+- **Privy Embedded Wallet**: Optional self-custody wallet. A card can be moved out to a wallet whose keys the user holds, brought back, or transferred anywhere else, with Privy paying the gas (`/wallet`)
 
 ## Quick Start
 
@@ -540,11 +540,20 @@ All costs are sponsored by the platform. Users only pay with Credits.
 
 ### True Digital Ownership (Shipped)
 
-A card can be moved out of Gachard's custody into a Privy wallet only the user
-controls, brought back to resume marketplace trading, printing and dismantling,
-or transferred to any address at all. Privy pays the gas on both sponsored
-steps. This is ADR-031, and it is what closes the loop between custodial
-simplicity and real ownership: the user chooses their own level of control.
+A card can be moved out of Gachard's custody into a Privy wallet whose keys the
+user holds, brought back to resume marketplace trading, printing and
+dismantling, or transferred to any address at all. Privy pays the gas on both
+sponsored steps. This is ADR-031, and it is what closes the loop between
+custodial simplicity and real ownership: the user chooses their own level of
+control.
+
+Gachard can send a card out of that wallet only while the user grants it
+delegated access through Privy, which is what makes the return work, and
+**Withdraw access** on `/wallet` removes it in one click. That is protection at
+the application level. The contract does not enforce it yet: `marketplaceTransfer`
+is an owner-only function that takes no signature from the holder, so the admin
+key could still move a card held in a user's wallet. ADR-036 records this and
+the fix, which waits for the next contract version.
 
 Choosing which cards leave happens on `/wallet/move` and nowhere else, so the
 consumer surfaces carry no wallet actions for anyone (ADR-002, amended). One
