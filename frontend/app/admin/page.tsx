@@ -236,6 +236,14 @@ type PendingCard = {
   isStale: boolean;
 };
 
+type InFlight = {
+  checkedAt: string;
+  stuckAfterMinutes: number;
+  inFlight: number;
+  stuck: number;
+  rows: { source: "transaction" | "card"; kind: string; status: string; cardId: string | null; tokenId: number | null; txHash: string | null; ageMinutes: number }[];
+};
+
 type TabKey = "cards" | "transactions" | "dismantle" | "prints" | "health" | "users" | "supporters" | "creators";
 
 type AdminSupporter = {
@@ -322,6 +330,7 @@ export default function AdminPage() {
   const [prints, setPrints] = useState<PrintRequest[]>([]);
   const [pendingCards, setPendingCards] = useState<PendingCard[]>([]);
   const [pendingMeta, setPendingMeta] = useState({ total: 0, staleCount: 0, avgPendingMinutes: 0 });
+  const [inFlight, setInFlight] = useState<InFlight | null>(null);
   const [supporters, setSupporters] = useState<AdminSupporter[]>([]);
   const [creatorApps, setCreatorApps] = useState<CreatorApp[]>([]);
   const [balances, setBalances] = useState<{ adminWallet: { address: string; balanceMON: string }; packEntropy: { address: string; balanceMON: string }; supply?: { chainNextTokenId: number; highestKnownTokenId: number; unexplained: number; updatedAt: string | null; checkedAt: string } | null } | null>(null);
@@ -381,8 +390,10 @@ export default function AdminPage() {
       readPrivate("/api/admin/supporters"),
       readPrivate("/api/admin/creator-applications"),
       fetch("/api/admin/balances", { credentials: "include" }).then((r) => r.json()),
+      // Database only, so it still answers when the chain does not.
+      fetch("/api/admin/in-flight", { credentials: "include" }).then((r) => r.json()).catch(() => null),
     ])
-      .then(([usersData, txsData, cardsData, printsData, pendingData, supportersData, creatorsData, balancesData]) => {
+      .then(([usersData, txsData, cardsData, printsData, pendingData, supportersData, creatorsData, balancesData, inFlightData]) => {
         setLocked(usersData?.locked === true);
         setUsers(usersData.users ?? []);
         setTxs(txsData.transactions ?? []);
@@ -395,6 +406,7 @@ export default function AdminPage() {
         if (balancesData && !balancesData.error) {
           setBalances(balancesData);
         }
+        setInFlight(inFlightData && !inFlightData.error ? inFlightData : null);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -602,6 +614,7 @@ export default function AdminPage() {
     >
       {/* Balance Cards */}
       {balances && <BalanceCards balances={balances} />}
+      {inFlight && <InFlightPanel report={inFlight} />}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-8 gap-4 mb-8">
@@ -1721,6 +1734,83 @@ function HealthTable({
             </tr>
           ))}
         </TableShell>
+      )}
+    </div>
+  );
+}
+
+/* ─── In flight (ADR-037) ─── */
+/** Operations that started and never finished. Quiet when nothing is stuck. */
+function InFlightPanel({ report }: { report: InFlight }) {
+  const alarm = report.stuck > 0;
+  const age = (m: number) => (m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`);
+  return (
+    <div
+      className="glass p-4 mb-8"
+      style={alarm ? { borderColor: "rgba(255,196,102,0.5)", background: "rgba(255,196,102,0.05)" } : undefined}
+      data-testid="in-flight"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[0.6rem] uppercase tracking-widest text-white/40">Stuck in flight</p>
+        <span
+          className="text-[0.55rem] px-2 py-0.5 rounded-full"
+          style={alarm
+            ? { background: "rgba(255,196,102,0.18)", color: "var(--aurora-gold)" }
+            : { background: "rgba(0,255,136,0.12)", color: "#00ff88" }}
+        >
+          {alarm ? "Needs a look" : "Nothing stuck"}
+        </span>
+      </div>
+
+      <p className="font-display text-2xl mb-1" style={{ color: alarm ? "var(--aurora-gold)" : "var(--electric-blue)" }}>
+        {report.stuck}{" "}
+        <span className="text-sm text-white/40">
+          waiting longer than {report.stuckAfterMinutes} minutes · {report.inFlight} in flight
+        </span>
+      </p>
+
+      {alarm && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-white/40">
+                <th className="py-1.5 pr-3 font-normal">Operation</th>
+                <th className="py-1.5 pr-3 font-normal">Where</th>
+                <th className="py-1.5 pr-3 font-normal">Card</th>
+                <th className="py-1.5 pr-3 font-normal">Tx</th>
+                <th className="py-1.5 font-normal text-right">Waiting</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.rows.map((r, i) => (
+                <tr key={i} style={rowStyle}>
+                  <td className="py-1.5 pr-3 text-white/85">{r.kind}</td>
+                  <td className="py-1.5 pr-3 text-white/50">
+                    {r.source === "card" ? "card still in flight, its record is not pending" : r.status}
+                  </td>
+                  <td className="py-1.5 pr-3 font-mono text-white/60">
+                    {r.cardId ?? (r.tokenId !== null ? `#${r.tokenId}` : "—")}
+                  </td>
+                  <td className="py-1.5 pr-3 font-mono">
+                    {r.txHash ? (
+                      <a href={`${EXPLORER_TX}${r.txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--electric-blue)" }} className="hover:underline">
+                        {r.txHash.slice(0, 10)}…
+                      </a>
+                    ) : (
+                      <span className="text-white/30">none</span>
+                    )}
+                  </td>
+                  <td className="py-1.5 text-right font-mono" style={{ color: r.ageMinutes >= 60 ? "#ff6bba" : "var(--aurora-gold)" }}>
+                    {age(r.ageMinutes)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {report.stuck > report.rows.length && (
+            <p className="text-[0.65rem] text-white/40 mt-2">Showing the {report.rows.length} oldest of {report.stuck}.</p>
+          )}
+        </div>
       )}
     </div>
   );

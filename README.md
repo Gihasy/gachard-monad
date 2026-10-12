@@ -309,7 +309,7 @@ deployment-specific notes are in [Deployment → Frontend (Vercel)](#frontend-ve
 - **ADR-034**: The marketplace fee belongs to a self-custody marketplace *(proposed, not built)*
 - **ADR-035**: A cosmetics store as the intended Crystal sink *(proposed, not built)*
 - **ADR-036**: What a compromised admin key can do, and the order of the fixes
-- **ADR-037**: Find anomalies by checking state; log only what state cannot show *(proposed, not built)*
+- **ADR-037**: Find anomalies by checking state; log only what state cannot show *(stuck-in-flight panel built; the rest proposed)*
 
 The full ADR log is in [`DECISIONS.md`](DECISIONS.md), 37 records covering every
 architectural decision, including the ones that were superseded and the known
@@ -418,7 +418,7 @@ All blockchain transactions are verifiable on Monad Explorer:
 cd frontend && npx tsx scripts/suite-api.ts    # needs a server running
 ```
 
-115 checks over authentication boundaries, the public marketplace response, the
+122 checks over authentication boundaries, the public marketplace response, the
 public admin tier, logout, redeem, the EIP-712 batch signature, rate limits,
 reconciliation, Privy binding, stuck marketplace purchases, released cards and
 scanned QR payloads. It

@@ -570,7 +570,7 @@ This is stated in the submission rather than hidden. A project that can describe
 
 ## ADR-037: Find Anomalies by Checking State, and Log Only What State Cannot Show
 
-**Status**: Proposed, 12 October 2026. Nothing here is built. It waits until after the submission deadline (14 October), with one possible exception named at the end.
+**Status**: Proposed, 12 October 2026. Check 1 is built (see the note at the end); the rest is not. It waits until after the submission deadline (14 October), with one possible exception named at the end.
 
 **Context**: the suggestion was to add logs and tracing so anomalies can be found. Before deciding, it is worth looking at how this project's real anomalies were actually found.
 
@@ -621,3 +621,13 @@ The `console` calls stay where they are. The events log does not replace them; i
 - The events collection is new personal-data-adjacent storage. A hashed IP is still linkable within the TTL, which is why the TTL exists.
 
 **Possible exception before the deadline**: check 1 alone, as a wider Pending panel. It is a query against data that already exists, needs no schema change, and catches the class of bug that has cost the most time. Everything else waits.
+
+*As built, 12 October 2026: check 1 shipped.* It is a separate "Stuck in flight" panel rather than a widened Pending Cards panel, because the existing panel is a detailed view of mints and this one has to cover every flow (`lib/in-flight.ts`, `/api/admin/in-flight`).
+
+- **Transactions are the primary source.** Every flow that can hang writes a `pending` or `entropy_pending` transaction row before it waits, so one stuck operation is one line.
+- **Cards appear only when their transaction is not pending.** Otherwise one problem would be counted twice. A card still in flight while its record says confirmed is the stuck-purchase bug exactly, and it is the row this panel most exists to show.
+- **Its "in flight" for a card is the reconciler's definition.** It uses the same conditions as `lib/privy-reconcile.ts` (`importTxId` without `importTxHash`, `releaseTxId` without `releaseTxHash`), so the two cannot disagree about what is unfinished.
+- **It reads the database only.** That keeps it separate from `/api/admin/balances`, which fails whole when the RPC is down — and a dead RPC is when operations pile up.
+- **It is public tier and names no user.**
+
+Checks 2 and 3 and the events log are still not built.

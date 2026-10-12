@@ -600,6 +600,47 @@ function group(title: string) { results.push(`\n${title}`); }
   await db.collection("users").deleteOne({ _id: otherId });
   await db.collection("rate_limits").deleteMany({ userId: otherId.toString() });
 
+  group("P. Stuck in flight (ADR-037)");
+  {
+    const ago = (m: number) => new Date(Date.now() - m * 60000).toISOString();
+    const H_STUCK = "0x" + "a1".repeat(32);
+    const H_FRESH = "0x" + "a2".repeat(32);
+    const H_DONE = "0x" + "a3".repeat(32);
+    const H_PEND = "0x" + "a4".repeat(32);
+    await db.collection("transactions").insertMany([
+      // waiting 25 minutes: stuck
+      { userId: uid, type: "privy_send", tokenId: 970103, txHash: H_STUCK, status: "pending", createdAt: ago(25), updatedAt: ago(25) },
+      // just started: in flight, not stuck
+      { userId: uid, type: "redeem", tokenId: 970104, txHash: H_FRESH, status: "pending", createdAt: ago(1), updatedAt: ago(1) },
+      // the record says done, but the card below never left pending
+      { userId: uid, type: "sold", tokenId: 970101, txHash: H_DONE, status: "confirmed", createdAt: ago(30), updatedAt: ago(30) },
+      // pending, and its card is pending too: one problem, not two
+      { userId: uid, type: "sold", tokenId: 970102, txHash: H_PEND, status: "pending", createdAt: ago(30), updatedAt: ago(30) },
+    ]);
+    await db.collection("cards").insertMany([
+      { cardId: "suite-p1", tokenId: 970101, templateId: tpl[0].templateId, rarity: 0, ownerAddress: OWNER, status: "pending", pendingBuyerId: "suite-buyer", pendingTxHash: H_DONE, viewed: true, createdAt: ago(30), updatedAt: ago(30) },
+      { cardId: "suite-p2", tokenId: 970102, templateId: tpl[0].templateId, rarity: 0, ownerAddress: OWNER, status: "pending", pendingBuyerId: "suite-buyer", pendingTxHash: H_PEND, viewed: true, createdAt: ago(30), updatedAt: ago(30) },
+    ]);
+
+    const res = await get("/api/admin/in-flight");
+    check("the panel is readable without unlocking", res.status === 200, String(res.status));
+    const text = await res.text();
+    const r = JSON.parse(text) as { inFlight: number; stuck: number; rows: { source: string; kind: string; cardId: string | null; txHash: string | null; ageMinutes: number }[] };
+    check("it names no user", !text.includes("userId") && !text.includes(uid) && !text.includes("suite-buyer") && !text.includes(EMAIL));
+    const stuckTx = r.rows.find((x) => x.txHash === H_STUCK);
+    check("a transaction pending for 25 minutes is listed as stuck", stuckTx?.kind === "Send out of Gachard" && stuckTx.ageMinutes >= 25, JSON.stringify(stuckTx));
+    check("one started a minute ago is in flight but not stuck", !r.rows.some((x) => x.txHash === H_FRESH) && r.inFlight > r.stuck);
+    const orphan = r.rows.find((x) => x.cardId === "suite-p1");
+    check("a card still pending after its record says confirmed is listed", orphan?.source === "card" && orphan.kind === "Marketplace purchase", JSON.stringify(orphan));
+    check("a pending card behind a pending transaction is listed once, not twice",
+      !r.rows.some((x) => x.cardId === "suite-p2") && r.rows.some((x) => x.txHash === H_PEND));
+
+    await db.collection("cards").deleteMany({ cardId: { $in: ["suite-p1", "suite-p2"] } });
+    await db.collection("transactions").deleteMany({ userId: uid, txHash: { $in: [H_STUCK, H_FRESH, H_DONE, H_PEND] } });
+    const after = await (await get("/api/admin/in-flight")).json();
+    check("once settled, they leave the panel", !after.rows.some((x: { txHash: string | null; cardId: string | null }) => [H_STUCK, H_PEND].includes(x.txHash ?? "") || x.cardId === "suite-p1"));
+  }
+
   // ---- cleanup ----
   await db.collection("cards").deleteMany({ cardId: { $regex: "^suite-" } });
   await db.collection("cards").deleteMany({ ownerAddress: OWNER });
