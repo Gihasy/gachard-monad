@@ -3,6 +3,7 @@ import { getCollection } from "@/lib/mongodb";
 import { friendlyTxStatus, friendlyCardStatus } from "@/lib/status-map";
 import { generateInvoiceId } from "@/lib/invoice";
 import { getFVM } from "@/lib/fvm";
+import { publicLabel } from "@/lib/display-name";
 
 const STATUS_LABELS = ["Digital", "Vaulted"];
 
@@ -100,16 +101,24 @@ export async function GET(request: Request) {
       if (tx.toAddress && tx.toAddress !== "vault") allAddresses.add(tx.toAddress.toLowerCase());
     }
 
-    const addressToUsername = new Map<string, string>();
+    // Address → the name a stranger may see. Never `username`: that is the
+    // email's local part (lib/auth.ts), and this endpoint is public. See
+    // lib/display-name.ts.
+    //
+    // Both of a user's addresses map to the same label. A card moved into
+    // someone's own Privy wallet is still theirs, and provenance that showed a
+    // stranger's address at that point would read as a change of hands.
+    const addressToLabel = new Map<string, string>();
     if (allAddresses.size > 0) {
-      const addressList = Array.from(allAddresses);
+      const patterns = Array.from(allAddresses).map((a) => new RegExp(`^${a}$`, "i"));
       const relevantUsers = await usersCollection
-        .find({ walletAddress: { $in: addressList.map((a) => new RegExp(`^${a}$`, "i")) } })
+        .find({ $or: [{ walletAddress: { $in: patterns } }, { privyWalletAddress: { $in: patterns } }] })
+        .project({ _id: 1, displayName: 1, walletAddress: 1, privyWalletAddress: 1 })
         .toArray();
       for (const u of relevantUsers) {
-        if (u.walletAddress) {
-          addressToUsername.set(u.walletAddress.toLowerCase(), `@${u.username}`);
-        }
+        const label = publicLabel(u as { _id: { toString(): string }; displayName?: unknown });
+        if (typeof u.walletAddress === "string") addressToLabel.set(u.walletAddress.toLowerCase(), label);
+        if (typeof u.privyWalletAddress === "string") addressToLabel.set(u.privyWalletAddress.toLowerCase(), label);
       }
     }
 
@@ -118,7 +127,7 @@ export async function GET(request: Request) {
     const rarityCode = card.rarity ?? 0;
     const ownerAddress = card.ownerAddress || null;
     const ownerName = ownerAddress
-      ? addressToUsername.get(ownerAddress.toLowerCase()) || null
+      ? addressToLabel.get(ownerAddress.toLowerCase()) || null
       : null;
     const lastSync = card.lastOnChainSync || null;
 
@@ -173,13 +182,27 @@ export async function GET(request: Request) {
           "0xf7ded49eb412f69520c38c3f7e36523d71428dea",
           "0x869e4d60819c6c09f672a04bda0bbaddd924215e",
         ].filter(Boolean);
+        // Who a party is, in words a stranger may see. A raw address is never
+        // returned: this is a consumer surface (ADR-002), and an address that
+        // matches no Gachard user is either somewhere outside the platform or
+        // an account since removed — either way "unknown holder" is the true
+        // answer and the hex string is not.
+        const party = (clean: string | undefined): string | null => {
+          if (!clean) return null;
+          if (clean === "vault") return "Gachard Vault";
+          if (clean === "shipping") return "Shipping";
+          if (ADMIN_WALLETS.includes(clean)) return "Gachard";
+          const known = addressToLabel.get(clean);
+          if (known) return known;
+          return /^0x[0-9a-f]{40}$/.test(clean) ? "Unknown holder" : null;
+        };
         return {
           invoiceId: generateInvoiceId(tx._id.toString()),
           type: tx.type,
           status: friendlyTxStatus(tx.status),
           price: tx.amount || null,
-          from: cleanFrom === "vault" ? "Gachard Vault" : ADMIN_WALLETS.includes(cleanFrom) ? "Gachard" : addressToUsername.get(cleanFrom) || tx.fromAddress?.trim().replace(/^"|"$/g, ''),
-          to: cleanTo === "vault" ? "Gachard Vault" : ADMIN_WALLETS.includes(cleanTo) ? "Gachard" : addressToUsername.get(cleanTo) || tx.toAddress?.trim().replace(/^"|"$/g, ''),
+          from: party(cleanFrom),
+          to: party(cleanTo),
           timestamp: tx.createdAt,
         };
       }),

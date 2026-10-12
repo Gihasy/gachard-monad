@@ -341,6 +341,16 @@ Fields are omitted rather than nulled. Absent is the honest shape: not withheld 
 
 **Consequence, one mechanism to reason about**: pages and APIs are now gated identically. The earlier split — signed token for APIs, cookie presence for pages — is the kind of asymmetry that reads as deliberate and is easy to extend wrongly. Any page that renders server-side data now sits behind the same verification the data does.
 
+**Amendment, 12 October 2026: a derived identifier is still an identifier.**
+
+The rule above says public endpoints do not emit user identifiers, and `/api/scan` complied in letter: it returned `username`, not an id. But `lib/auth.ts` builds `username` as `email.split("@")[0]`, so every scan published the owner's email address minus its domain. The endpoint is public by design (provenance is the point of it) and a cardId is five hex characters, so the full list of owners could be collected by script without holding a single physical card.
+
+**Decision**: public surfaces show a collector by a name they chose, or by an anonymous label — `Collector #3F9A2C`, an HMAC of the user id that is stable across cards and not reversible to the id. `username` does not appear in any public response. A raw wallet address does not either: an address that matches no Gachard user reads "Unknown holder", because this is a consumer surface (ADR-002).
+
+Names are ASCII-only and some are reserved, because a collector named "Gachard Vault" could make a provenance row look like the platform held a card it never did, and a Cyrillic а passes any blocklist written in Latin letters — ADR-033's impersonation problem by another door. Names are unique case-insensitively, because the reason to show a name is to say who held a card, and a shared name says nothing.
+
+The rule this leaves, sharper than the one above: **a field derived from personal data is personal data.** Check what a public field is made of, not just what it is called.
+
 **Note, 23 September 2026: the gate moved from `middleware.ts` to `proxy.ts`.**
 
 Next 16 deprecated the `middleware` file convention and renamed it to `proxy`, and the build said so on every deploy. The file was renamed and the exported function with it; `config.matcher` is untouched. Nothing above changes — this is the same gate under the name the framework now uses, and everything this ADR says about it still holds.

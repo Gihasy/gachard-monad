@@ -7,6 +7,7 @@ import Link from "next/link";
 import PageShell from "@/components/PageShell";
 import { friendlyTxType } from "@/lib/status-map";
 import CardItem from "@/components/CardItem";
+import PublicNameField from "@/components/profile/PublicNameField";
 // Lazy: the dialog only exists once someone asks to redeem, which most people
 // never do.
 const RedeemModal = dynamic(() => import("@/components/profile/RedeemModal"), { ssr: false });
@@ -215,6 +216,7 @@ export default function Profil() {
                     {user.email}
                   </p>
                 )}
+                <PublicNameField />
               </div>
             </div>
 

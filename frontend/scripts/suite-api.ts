@@ -43,6 +43,7 @@ function group(title: string) { results.push(`\n${title}`); }
     await import("../lib/transactions");
   const { getCrystalBalance } = await import("../lib/crystal");
   const { checkSupplyIntegrity, recordMintedUpTo } = await import("../lib/supply-integrity");
+  const { checkDisplayName } = await import("../lib/display-name");
 
   const client = new MongoClient(process.env.MONGODB_URL!);
   await client.connect();
@@ -532,6 +533,56 @@ function group(title: string) { results.push(`\n${title}`); }
   const full = await (await get("/api/scan?cardId=suite-0&history=all")).json();
   check("the full view returns every transaction", full.history?.length === HIST, String(full.history?.length));
   check("including the first one, where the card came from", full.history?.at(-1)?.type === "mint", String(full.history?.at(-1)?.type));
+
+  // ================= O. public names =================
+  // The scan page showed owners by `username`, which is the email's local
+  // part. The endpoint is public and cardIds are five hex characters, so every
+  // owner's email minus its domain could be collected by script. Owners are
+  // now shown by a name they chose, or an anonymous label.
+  group("O. Public names");
+
+  check("names are refused unauthenticated", (await get("/api/user/display-name")).status === 401);
+
+  const nm0 = await (await get("/api/user/display-name", session)).json();
+  check("an unnamed user gets an anonymous label", /^Collector #[0-9A-F]{6}$/.test(nm0.fallback ?? ""), String(nm0.fallback));
+
+  // Rules, checked directly so the rate limit is spent on the HTTP checks.
+  check("too short is refused", !checkDisplayName("ab").ok);
+  check("non-ASCII is refused, so a Cyrillic a cannot pass as Latin", !checkDisplayName("G\u0430chard").ok);
+  check("a name that mimics the platform is refused", !checkDisplayName("Gachard Vault").ok);
+  check("punctuation does not get around the reserved words", !checkDisplayName("G.a.c.h.a.r.d").ok);
+  check("a name that mimics the anonymous label is refused", !checkDisplayName("Collector 1").ok);
+  check("an ordinary name is accepted", checkDisplayName("Card Hunter").ok);
+
+  const badHttp = await post("/api/user/display-name", { displayName: "Gachard Vault" }, session);
+  check("the route refuses a reserved name", badHttp.status === 400, String(badHttp.status));
+
+  const PICKED = "Suite Hunter";
+  const setRes = await post("/api/user/display-name", { displayName: PICKED }, session);
+  check("a valid name is saved", setRes.status === 200, String(setRes.status));
+
+  const scanNamed = await (await get("/api/scan?cardId=suite-0")).text();
+  check("the scan shows the chosen name", scanNamed.includes(PICKED));
+  check("the scan never shows the username", !scanNamed.includes("@suite") && !scanNamed.includes('"suite"'));
+
+  // A second account cannot take the same name, whatever the case.
+  const otherId = new ObjectId();
+  await db.collection("users").insertOne({
+    _id: otherId, email: "suite-other@gachard.test", username: "suite-other",
+    walletAddress: ethers.Wallet.createRandom().address, crystalBalance: 0, createdAt: now,
+  });
+  const ots = Math.floor(Date.now() / 1000);
+  const opl = `${otherId.toString()}.${ots}`;
+  const otherSession = `gachard_session=${opl}.${createHmac("sha256", Buffer.from(process.env.ENCRYPTION_SECRET_KEY!, "utf8")).update(opl).digest("hex")}`;
+  const dup = await post("/api/user/display-name", { displayName: PICKED.toUpperCase() }, otherSession);
+  check("a name already taken is refused, ignoring case", dup.status === 409, String(dup.status));
+  await db.collection("users").deleteOne({ _id: otherId });
+  await db.collection("rate_limits").deleteMany({ userId: otherId.toString() });
+
+  const cleared = await (await post("/api/user/display-name", { displayName: "" }, session)).json();
+  check("clearing returns to the anonymous label", cleared.displayName === null);
+  const scanAnon = await (await get("/api/scan?cardId=suite-0")).text();
+  check("the scan then shows the anonymous label", scanAnon.includes(nm0.fallback));
 
   // ---- cleanup ----
   await db.collection("cards").deleteMany({ cardId: { $regex: "^suite-" } });

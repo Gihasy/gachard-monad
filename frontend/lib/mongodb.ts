@@ -69,6 +69,9 @@ async function createIndexes(database: Db) {
     // Users
     database.collection("users").createIndex({ walletAddress: 1 }),
     database.collection("users").createIndex({ username: 1 }),
+    // Public names are unique case-insensitively (lib/display-name.ts). Sparse,
+    // because most users never set one and an absent key must not collide.
+    database.collection("users").createIndex({ displayNameKey: 1 }, { unique: true, sparse: true }),
 
     // Card templates
     database.collection("card_templates").createIndex({ templateId: 1 }, { unique: true }),
