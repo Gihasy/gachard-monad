@@ -211,7 +211,8 @@ export default function Navbar() {
                   onMouseEnter={() => { setShowUserMenu(true); refreshBalance(); }}
                   onMouseLeave={() => setShowUserMenu(false)}
                 >
-                  <div
+                  <Link
+                    href="/profile"
                     className="flex items-center gap-2 px-3.5 py-2 rounded-full cursor-pointer transition-all hover:brightness-125"
                     style={{
                       background: "rgba(255,255,255,0.05)",
@@ -229,7 +230,7 @@ export default function Navbar() {
                     <span className="text-xs font-medium text-white/85">
                       @{publicName ?? "…"}
                     </span>
-                  </div>
+                  </Link>
 
                 {/* Invisible bridge to prevent hover gap */}
                 {showUserMenu && <div className="absolute right-0 w-full h-2" style={{ top: "100%" }} />}
