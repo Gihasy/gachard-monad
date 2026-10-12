@@ -510,6 +510,29 @@ function group(title: string) { results.push(`\n${title}`); }
   check("one of our URLs carrying no code yields nothing", sc(`${ORIGIN}/scan`).claimId === null && sc(`${ORIGIN}/scan`).cardId === null);
   check("someone else's QR yields nothing", sc("https://example.com/hello").cardId === null);
 
+  // ================= N. scan history =================
+  // The scan page used to cap history at ten with no way past it, while
+  // telling the user they would see the full history. An eleventh transaction
+  // silently dropped the first one — where the card came from, which is the
+  // part of provenance that matters most — and nothing anywhere errored.
+  group("N. Scan history");
+  const HIST = 8;
+  const histBase = Date.now() - HIST * 60_000;
+  await db.collection("transactions").insertMany(
+    Array.from({ length: HIST }, (_, i) => ({
+      _id: new ObjectId(), userId: uid, type: i === 0 ? "mint" : "sold",
+      tokenId: 970000, tokenIds: [970000], status: "confirmed", txHash: null,
+      fromAddress: "vault", toAddress: "vault",
+      createdAt: new Date(histBase + i * 60_000).toISOString(),
+    }))
+  );
+  const recent = await (await get("/api/scan?cardId=suite-0")).json();
+  check("the scan opens with the five most recent", recent.history?.length === 5, String(recent.history?.length));
+  check("it reports the true total", recent.historyTotal === HIST, String(recent.historyTotal));
+  const full = await (await get("/api/scan?cardId=suite-0&history=all")).json();
+  check("the full view returns every transaction", full.history?.length === HIST, String(full.history?.length));
+  check("including the first one, where the card came from", full.history?.at(-1)?.type === "mint", String(full.history?.at(-1)?.type));
+
   // ---- cleanup ----
   await db.collection("cards").deleteMany({ cardId: { $regex: "^suite-" } });
   await db.collection("cards").deleteMany({ ownerAddress: OWNER });

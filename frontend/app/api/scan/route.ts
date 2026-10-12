@@ -5,6 +5,28 @@ import { generateInvoiceId } from "@/lib/invoice";
 import { getFVM } from "@/lib/fvm";
 
 const STATUS_LABELS = ["Digital", "Vaulted"];
+
+/**
+ * How much history a scan returns.
+ *
+ * The page opens with the most recent few, because a card that has changed
+ * hands many times would otherwise push everything below the fold. The rest
+ * is one click away: `?history=all` returns the whole record.
+ *
+ * This used to be a flat `.limit(10)` with no way past it, inherited from
+ * the first commit with no reason recorded, while the page told the user
+ * "you'll see full transaction history". A card with an eleventh transaction
+ * silently lost its first one, which is the part of provenance that matters
+ * most — where the card came from.
+ *
+ * The ceiling on the full view is a guard on a public endpoint rather than a
+ * product limit. Every transaction on a card is a real action somebody paid
+ * gas for, so no genuine card approaches it; if one ever does, `historyTotal`
+ * still reports the true count and the page says the list is truncated rather
+ * than pretending it is complete.
+ */
+const RECENT_HISTORY = 5;
+const FULL_HISTORY_CEILING = 500;
 const RARITY_LABELS = ["Common", "Rare", "Epic", "Legendary"];
 
 export async function GET(request: Request) {
@@ -12,6 +34,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const cardIdParam = searchParams.get("cardId");
     const tokenIdParam = searchParams.get("tokenId");
+    const wantsFullHistory = searchParams.get("history") === "all";
 
     if (!cardIdParam && !tokenIdParam) {
       return NextResponse.json({ error: "cardId or tokenId required" }, { status: 400 });
@@ -57,13 +80,15 @@ export async function GET(request: Request) {
     // Ambil FVM untuk template ini
     const fvmResult = card.templateId ? await getFVM(card.templateId) : { fvm: null, source: "none" as const };
 
-    // Ambil ownership history
+    // Transaction history: the recent few by default, everything on request.
+    const historyFilter = {
+      $or: [{ tokenId: card.tokenId }, { tokenIds: card.tokenId }],
+    };
+    const historyTotal = await txCollection.countDocuments(historyFilter);
     const history = await txCollection
-      .find({
-        $or: [{ tokenId: card.tokenId }, { tokenIds: card.tokenId }],
-      })
+      .find(historyFilter)
       .sort({ createdAt: -1 })
-      .limit(10)
+      .limit(wantsFullHistory ? FULL_HISTORY_CEILING : RECENT_HISTORY)
       .toArray();
 
     // Lookup semua address unik untuk resolve username
@@ -137,6 +162,9 @@ export async function GET(request: Request) {
         statusMatch,
         flag: verificationFlag,
       },
+      // The true count, so the page knows whether there is more to show and
+      // can say so honestly if the full view ever hits the ceiling.
+      historyTotal,
       history: history.map((tx) => {
         const cleanFrom = tx.fromAddress?.trim().replace(/^"|"$/g, '').toLowerCase();
         const cleanTo = tx.toAddress?.trim().replace(/^"|"$/g, '').toLowerCase();

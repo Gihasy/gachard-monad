@@ -42,6 +42,8 @@ interface ScanData {
   };
   verification: { flag: "verified" | "warning" | string };
   history?: ScanTx[];
+  /** Every transaction on this card, not just the ones returned. */
+  historyTotal?: number;
   purchasePrice: number | null;
 }
 
@@ -56,6 +58,13 @@ function ScanContent() {
   const [showScanner, setShowScanner] = useState(false);
   const [retryLoading, setRetryLoading] = useState(false);
   const [claimResult, setClaimResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // The full history is fetched only when asked for, and kept once fetched so
+  // collapsing and expanding again does not hit the server twice.
+  const [fullHistory, setFullHistory] = useState<ScanTx[] | null>(null);
+  const [showFullHistory, setShowFullHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   /**
    * The URL branch here only ever looked for `cardId`, so a claim QR — which
@@ -113,6 +122,10 @@ function ScanContent() {
     setError(null);
     setData(null);
     setRetryLoading(false);
+    // A different card's history must not survive into this one.
+    setFullHistory(null);
+    setShowFullHistory(false);
+    setHistoryError(null);
     fetch(`/api/scan?cardId=${cardId}`, { credentials: "include" })
       .then((r) => r.json())
       .then((d) => {
@@ -130,6 +143,27 @@ function ScanContent() {
       cancelled = true;
     };
   }, [cardId, claimId]);
+
+  const openFullHistory = async () => {
+    if (fullHistory) {
+      setShowFullHistory(true);
+      return;
+    }
+    if (!cardId) return;
+    setLoadingHistory(true);
+    setHistoryError(null);
+    try {
+      const r = await fetch(`/api/scan?cardId=${cardId}&history=all`, { credentials: "include" });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || "Could not load the full history");
+      setFullHistory(d.history ?? []);
+      setShowFullHistory(true);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : "Could not load the full history");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   // Claim result state
   if (claimId && claimResult) {
@@ -536,14 +570,31 @@ function ScanContent() {
                 )}
               </div>
 
-              {/* History */}
-              {data.history && data.history.length > 0 && (
+              {/* History. The five most recent first; the rest on request.
+                  The collapsed view shows all five without an inner scroll,
+                  because a scroll box that hides two of five rows defeats the
+                  point of showing five. The full view does scroll, since it
+                  can be long. */}
+              {data.history && data.history.length > 0 && (() => {
+                const total = data.historyTotal ?? data.history.length;
+                const rows = showFullHistory && fullHistory ? fullHistory : data.history;
+                const hasMore = total > data.history.length;
+                const truncated = showFullHistory && fullHistory !== null && fullHistory.length < total;
+                return (
                 <div className="glass p-5" data-testid="scan-history">
-                  <p className="text-[0.72rem] uppercase tracking-[0.22em] mb-4" style={{ color: "var(--cosmic-violet)" }}>
-                    Transaction History
-                  </p>
-                  <div className="space-y-2 max-h-[calc(3*5.5rem)] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent" }}>
-                    {data.history.map((tx, i) => (
+                  <div className="flex items-baseline justify-between gap-3 mb-4">
+                    <p className="text-[0.72rem] uppercase tracking-[0.22em]" style={{ color: "var(--cosmic-violet)" }}>
+                      Transaction History
+                    </p>
+                    <span className="text-[0.65rem] text-white/40" data-testid="scan-history-count">
+                      {showFullHistory ? `${rows.length} of ${total}` : hasMore ? `${rows.length} most recent of ${total}` : `${total}`}
+                    </span>
+                  </div>
+                  <div
+                    className={`space-y-2 pr-1 ${showFullHistory ? "max-h-[calc(8*5.5rem)] overflow-y-auto" : ""}`}
+                    style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent" }}
+                  >
+                    {rows.map((tx, i) => (
                       <div
                         key={`${tx.type}-${tx.timestamp}-${i}`}
                         className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
@@ -586,8 +637,42 @@ function ScanContent() {
                       </div>
                     ))}
                   </div>
+
+                  {truncated && (
+                    <p className="text-[0.65rem] text-white/40 mt-3">
+                      Showing the {rows.length} most recent. This card has {total} transactions in total.
+                    </p>
+                  )}
+
+                  {historyError && (
+                    <p className="text-[0.65rem] mt-3" style={{ color: "var(--aurora-pink)" }}>
+                      {historyError}
+                    </p>
+                  )}
+
+                  {hasMore && !showFullHistory && (
+                    <button
+                      onClick={openFullHistory}
+                      disabled={loadingHistory}
+                      className="btn-ghost !py-2 !px-4 !text-xs w-full mt-3 disabled:opacity-50"
+                      data-testid="scan-history-full"
+                    >
+                      {loadingHistory ? "Loading…" : `See full transaction history (${total})`}
+                    </button>
+                  )}
+
+                  {showFullHistory && (
+                    <button
+                      onClick={() => setShowFullHistory(false)}
+                      className="btn-ghost !py-2 !px-4 !text-xs w-full mt-3"
+                      data-testid="scan-history-collapse"
+                    >
+                      Show recent only
+                    </button>
+                  )}
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         </>
