@@ -96,6 +96,23 @@ export function anonymousLabel(userId: string): string {
   return `Collector #${tag}`;
 }
 
+/**
+ * A name is chosen once.
+ *
+ * Since 12 October 2026 a collector picks their public name one time and keeps
+ * it. A name is how other collectors recognise who held a card, and one that
+ * can be changed at will can be traded away, or worn for a while and then
+ * dropped once it has a bad history behind it.
+ *
+ * Changing it later is possible, but only through a grant: `nameChangeGranted`
+ * on the user, set by hand (support, or a future paid or earned option). A
+ * grant allows exactly one change — renaming or releasing — and the change
+ * itself removes it. Nothing in the app sets it yet.
+ */
+export function mayChangeName(user: object): boolean {
+  return (user as { nameChangeGranted?: unknown }).nameChangeGranted === true;
+}
+
 /** What a user is called on a public surface. Never their username. */
 export function publicLabel(user: {
   _id: { toString(): string };

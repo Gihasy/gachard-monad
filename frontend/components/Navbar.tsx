@@ -1,5 +1,6 @@
 "use client";
 
+import { PUBLIC_NAME_EVENT } from "@/components/profile/PublicNameField";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -19,6 +20,8 @@ const navItems = [
 export default function Navbar() {
   const pathname = usePathname();
   const [user, setUser] = useState<{ username?: string; user_id?: string } | null>(null);
+  // Shown instead of the username, which is the email's local part.
+  const [publicName, setPublicName] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showCartDropdown, setShowCartDropdown] = useState(false);
@@ -45,9 +48,17 @@ export default function Navbar() {
       setUser(parsed);
       if (parsed?.user_id) {
         refreshBalance();
+        fetch("/api/user/display-name", { credentials: "include" })
+          .then((r) => r.json())
+          .then((d) => !d.error && setPublicName(d.displayName ?? d.fallback))
+          .catch(() => {});
+      } else {
+        setPublicName(null);
       }
     };
     readUser();
+    const onName = (e: Event) => setPublicName((e as CustomEvent<string>).detail);
+    window.addEventListener(PUBLIC_NAME_EVENT, onName);
 
     const onScroll = () => {
       if (!ticking) {
@@ -67,6 +78,7 @@ export default function Navbar() {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("auth-change", readUser);
       window.removeEventListener("balance-change", readUser);
+      window.removeEventListener(PUBLIC_NAME_EVENT, onName);
     };
   }, []);
 
@@ -215,7 +227,7 @@ export default function Navbar() {
                       }}
                     />
                     <span className="text-xs font-medium text-white/85">
-                      @{user.username}
+                      @{publicName ?? "…"}
                     </span>
                   </div>
 
@@ -383,7 +395,7 @@ export default function Navbar() {
                   <div className="text-sm text-white/70 px-3 py-2">
                     Signed in as{" "}
                     <span className="text-white font-semibold">
-                      @{user.username}
+                      @{publicName ?? "…"}
                     </span>
                   </div>
                   <Link

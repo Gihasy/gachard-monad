@@ -565,6 +565,16 @@ function group(title: string) { results.push(`\n${title}`); }
   check("the scan shows the chosen name", scanNamed.includes(PICKED));
   check("the scan never shows the username", !scanNamed.includes("@suite") && !scanNamed.includes('"suite"'));
 
+  // A name is chosen once. Renaming, and releasing (which would allow a
+  // rename by claiming again), both need a grant on the account.
+  const again = await post("/api/user/display-name", { displayName: "Another Hunter" }, session);
+  check("a second name is refused", again.status === 403, String(again.status));
+  const giveUp = await post("/api/user/display-name", { displayName: "" }, session);
+  check("releasing without a grant is refused too", giveUp.status === 403, String(giveUp.status));
+  const afterOnce = await (await get("/api/user/display-name", session)).json();
+  check("the name is unchanged and the profile is told it cannot change", afterOnce.displayName === PICKED && afterOnce.canChange === false);
+  await db.collection("rate_limits").deleteMany({ userId: uid });
+
   // Private hides the name from scans but keeps it reserved. Hiding a name
   // and giving it up are different acts; a collector who goes quiet for a week
   // must not come back to find someone else wearing their name.
@@ -586,17 +596,33 @@ function group(title: string) { results.push(`\n${title}`); }
   const dup = await post("/api/user/display-name", { displayName: PICKED.toUpperCase() }, otherSession);
   check("a private name cannot be claimed by anyone else", dup.status === 409, String(dup.status));
 
+  await db.collection("rate_limits").deleteMany({ userId: uid });
   const shown = await (await post("/api/user/display-name", { hidden: false }, session)).json();
   check("making it public again restores it", shown.hidden === false);
   check("and scans show it again", (await (await get("/api/scan?cardId=suite-0")).text()).includes(PICKED));
 
-  // Releasing is the only thing that frees a name.
+  // A grant allows exactly one change, and the change spends it.
+  await db.collection("users").updateOne({ _id: new ObjectId(uid) }, { $set: { nameChangeGranted: true } });
+  check("a grant is visible to the profile", (await (await get("/api/user/display-name", session)).json()).canChange === true);
+  const renamed = await post("/api/user/display-name", { displayName: "Suite Hunter Two" }, session);
+  check("with a grant, the name can be changed", renamed.status === 200, String(renamed.status));
+  const takeOld = await post("/api/user/display-name", { displayName: PICKED }, otherSession);
+  check("the name given up by renaming is free for someone else", takeOld.status === 200, String(takeOld.status));
+  const third = await post("/api/user/display-name", { displayName: "Suite Hunter Three" }, session);
+  check("and the grant is spent by that change", third.status === 403, String(third.status));
+  await db.collection("rate_limits").deleteMany({ userId: uid });
+
+  // Releasing is the only thing that frees a name, and it also needs a grant.
+  await db.collection("users").updateOne({ _id: new ObjectId(uid) }, { $set: { nameChangeGranted: true } });
   const cleared = await (await post("/api/user/display-name", { displayName: "" }, session)).json();
   check("releasing a name returns to the anonymous label", cleared.displayName === null);
   const scanAnon = await (await get("/api/scan?cardId=suite-0")).text();
   check("the scan then shows the anonymous label", scanAnon.includes(nm0.fallback));
-  const claimed = await post("/api/user/display-name", { displayName: PICKED }, otherSession);
-  check("once released, someone else may take it", claimed.status === 200, String(claimed.status));
+  check("the released account may choose again, as a first choice", cleared.canChange === true);
+  const taken = await post("/api/user/display-name", { displayName: PICKED.toLowerCase() }, session);
+  check("but not a name someone else now holds", taken.status === 409, String(taken.status));
+  const reclaim = await post("/api/user/display-name", { displayName: "Suite Hunter Two" }, session);
+  check("a released name is free again", reclaim.status === 200, String(reclaim.status));
   await db.collection("users").deleteOne({ _id: otherId });
   await db.collection("rate_limits").deleteMany({ userId: otherId.toString() });
 

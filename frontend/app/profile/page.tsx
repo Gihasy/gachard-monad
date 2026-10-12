@@ -42,6 +42,9 @@ const TX_HEAD_PX = 41;
 export default function Profil() {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
+  // The name shown in the header: the public name, or Collector #…, never the
+  // username (which is the email's local part).
+  const [label, setLabel] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [crystalBalance, setCrystalBalance] = useState<number | null>(null);
@@ -202,21 +205,10 @@ export default function Profil() {
                 }}
                 data-testid="profile-avatar"
               >
-                {user?.username?.charAt(0).toUpperCase() ?? "G"}
+                {label?.charAt(0).toUpperCase() ?? "G"}
               </div>
               <div className="min-w-0">
-                <p
-                  className="font-display text-lg sm:text-xl lg:text-2xl text-white truncate"
-                  data-testid="profile-username"
-                >
-                  @{user?.username ?? "player"}
-                </p>
-                {user?.email && (
-                  <p className="text-sm text-white/60 truncate">
-                    {user.email}
-                  </p>
-                )}
-                <PublicNameField />
+                <PublicNameField email={user?.email} onLabel={setLabel} />
               </div>
             </div>
 

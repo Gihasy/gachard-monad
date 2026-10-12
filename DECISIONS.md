@@ -351,6 +351,10 @@ Names are ASCII-only and some are reserved, because a collector named "Gachard V
 
 A name can be made private. Scans then show the anonymous label, but the name stays reserved: hiding a name and giving it up are different acts, and a collector who goes quiet for a week must not come back to find someone else wearing their name on every card they ever held.
 
+**A name is chosen once.** It is how other collectors recognise who held a card, and a name that can be changed at will can be passed around, or worn until it has a bad history and then dropped. Renaming needs a grant on the account (`nameChangeGranted`), set by hand for now, and a grant allows exactly one change: the conditional write that makes the change also removes the grant, so two requests sent together cannot both use it. Releasing needs the same grant, because releasing and claiming again would be a rename. Private and public stay free to toggle, because they change who sees the name, not the name.
+
+The username no longer appears anywhere in the app's own UI either. The profile header and the navbar show the public name, or `Collector #…` until one is chosen, with the collector label under a chosen name. That label is an HMAC of the internal user id under a server secret: not derived from the wallet address or the email, and not reversible to either.
+
 The rule this leaves, sharper than the one above: **a field derived from personal data is personal data.** Check what a public field is made of, not just what it is called.
 
 **Note, 23 September 2026: the gate moved from `middleware.ts` to `proxy.ts`.**
