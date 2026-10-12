@@ -355,6 +355,8 @@ A name can be made private. Scans then show the anonymous label, but the name st
 
 The username no longer appears anywhere in the app's own UI either. The profile header and the navbar show the public name, or `Collector #…` until one is chosen, with the collector label under a chosen name. That label is an HMAC of the internal user id under a server secret: not derived from the wallet address or the email, and not reversible to either.
 
+The admin console follows the same rule through `adminLabel()`: the public name, or the collector ID until one is chosen. It shows the name even while it is private, because private hides a name from strangers, not from the operator. The Users panel lists both the name, with its Public/Private state, and the collector ID. Both appear only behind the admin sign-in, as the users' other details already did.
+
 The rule this leaves, sharper than the one above: **a field derived from personal data is personal data.** Check what a public field is made of, not just what it is called.
 
 **Note, 23 September 2026: the gate moved from `middleware.ts` to `proxy.ts`.**
@@ -633,5 +635,6 @@ The `console` calls stay where they are. The events log does not replace them; i
 - **Its "in flight" for a card is the reconciler's definition.** It uses the same conditions as `lib/privy-reconcile.ts` (`importTxId` without `importTxHash`, `releaseTxId` without `releaseTxHash`), so the two cannot disagree about what is unfinished.
 - **It reads the database only.** That keeps it separate from `/api/admin/balances`, which fails whole when the RPC is down — and a dead RPC is when operations pile up.
 - **It is public tier and names no user.**
+- **It lives in a folded System Health section** with the balances and the supply check, closed by default. The closed header carries one line of status and any alarm opens it on load, so folding saves space without hiding a problem.
 
 Checks 2 and 3 and the events log are still not built.

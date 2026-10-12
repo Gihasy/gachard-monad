@@ -405,10 +405,12 @@ All blockchain transactions are verifiable on Monad Explorer:
 - **Pack Verification**: `/api/verify/pack/[txHash]`, verify rarity fairness on-chain
 
 ### Admin Console Features
+- **System Health**: MON balances, Token Supply Integrity and Stuck in Flight in one section that is folded by default. The closed header still shows one line of status, and any alarm (unexplained minting, a stuck operation, a low balance) opens it on load
 - **Balance Monitoring**: Real-time MON balance for admin wallet (gas) and PackEntropy (entropy fee)
 - **Copy Address**: One-click copy for contract addresses with visual feedback
 - **Transaction Tracking**: All transactions with clickable txHash links to Monad Explorer
 - **User Wallets**: View user wallet addresses (admin sign-in required; withheld from anonymous visitors)
+- **One name per collector**: every panel names a user by their public name, shown to the admin even while private, or by their collector ID. The Users panel shows both, with the Public/Private state. The email-derived username appears nowhere
 - **Token IDs**: Track NFT tokens on blockchain
 - **Risk Scores**: AI anomaly detection results
 - **Token Supply Integrity**: compares `nextTokenId` on chain against the highest token id Gachard has acknowledged minting, and goes loud if tokens appear beyond it — the first thing a compromised admin key would do. The high-water mark lives outside the collections that get wiped, so clean-slate and test fixtures cannot make Gachard's own mints look unexplained, and it holds its alarm rather than clearing itself (ADR-036)
