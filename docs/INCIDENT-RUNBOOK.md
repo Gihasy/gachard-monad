@@ -112,6 +112,9 @@ a new one, and use the hardware wallet as the bridge while you swap it.
    panel as evidence that one is still out there.
 6. **Check supply integrity** in the admin console before reopening. If it still
    reads unexplained, something is still minting.
+7. **Check Stuck in flight** in the same console. Operations started during the
+   incident may have stalled; settle each listed row before reopening, so a
+   user is not left with Crystal spent and no card.
 
 The hardware wallet is never the permanent owner. It holds ownership only long
 enough for the hot key underneath to be replaced.

@@ -229,13 +229,15 @@ export default function PublicNameField({
             Choose a public name
           </button>
         )}
-        <p className="w-full text-[0.65rem] text-white/35">
-          {!name
-            ? "This is what anyone who scans one of your cards sees. You can choose a public name once."
-            : hidden
-              ? `Private. Scans of your cards show ${fallback}, and the name stays reserved for you.`
+        {/* No note while private: the badge says it, and the collector id is
+            already shown under the name. */}
+        {!(name && hidden) && (
+          <p className="w-full text-[0.65rem] text-white/35">
+            {!name
+              ? "This is what anyone who scans one of your cards sees. You can choose a public name once."
               : "Anyone who scans one of your cards sees this name in its history."}
-        </p>
+          </p>
+        )}
         {error && (
           <p className="w-full text-[0.65rem]" style={{ color: "var(--aurora-pink)" }}>
             {error}

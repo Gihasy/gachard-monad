@@ -229,6 +229,7 @@ stateDiagram-v2
 
 ### Additional Features
 - **Scan & Verify**: QR code scanning for card authenticity verification. The scan page shows the five most recent transactions and the full history on request. Owners appear by a public name they chose, or as an anonymous "Collector #…" label; usernames and wallet addresses never appear on this public page (ADR-032, amended)
+- **Public Name**: Each collector chooses a public name once, and can switch it between Public and Private at any time. A private name stays reserved for its owner. Until a name is chosen, the app and the scan page show an anonymous `Collector #…` label, and the email-derived username appears nowhere (ADR-032, amended)
 - **Credit System**: Top up credits to purchase packs
 - **Transaction History**: The 50 most recent transactions on the Profile page
 - **Unique Card ID**: Each card has a unique hex ID (e.g. `#8a866`)
@@ -341,7 +342,7 @@ gachard-monad/
 ├── docs/              # Documentation
 ├── scripts/           # Deployment scripts
 ├── MEMORY.md          # Project status & working notes (not published)
-├── DECISIONS.md       # Architecture decisions, 36 ADRs and their amendments
+├── DECISIONS.md       # Architecture decisions, 37 ADRs and their amendments
 ```
 
 ## Deployment
@@ -411,6 +412,7 @@ All blockchain transactions are verifiable on Monad Explorer:
 - **Token IDs**: Track NFT tokens on blockchain
 - **Risk Scores**: AI anomaly detection results
 - **Token Supply Integrity**: compares `nextTokenId` on chain against the highest token id Gachard has acknowledged minting, and goes loud if tokens appear beyond it — the first thing a compromised admin key would do. The high-water mark lives outside the collections that get wiped, so clean-slate and test fixtures cannot make Gachard's own mints look unexplained, and it holds its alarm rather than clearing itself (ADR-036)
+- **Stuck in Flight**: lists every mint, purchase, dismantle, print, redeem and Privy transfer still pending after ten minutes, and every card still marked in flight after its record already says done. Reads the database only, so it keeps answering when the RPC does not (ADR-037)
 
 ## API and Logic Tests
 
@@ -420,8 +422,8 @@ cd frontend && npx tsx scripts/suite-api.ts    # needs a server running
 
 131 checks over authentication boundaries, the public marketplace response, the
 public admin tier, logout, redeem, the EIP-712 batch signature, rate limits,
-reconciliation, Privy binding, stuck marketplace purchases, released cards and
-scanned QR payloads. It
+reconciliation, Privy binding, stuck marketplace purchases, released cards,
+scanned QR payloads, public names and the stuck-in-flight panel. It
 builds its own fixture, deletes it, and prints what it left behind.
 
 ## Smart Contract Tests
