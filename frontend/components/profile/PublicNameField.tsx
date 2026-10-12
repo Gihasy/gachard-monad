@@ -229,13 +229,12 @@ export default function PublicNameField({
             Choose a public name
           </button>
         )}
-        {/* No note while private: the badge says it, and the collector id is
-            already shown under the name. */}
-        {!(name && hidden) && (
+        {/* Only before a name is chosen, when the label above needs explaining
+            and the once-only rule has to be said before the choice. After
+            that the badge says enough. */}
+        {!name && (
           <p className="w-full text-[0.65rem] text-white/35">
-            {!name
-              ? "This is what anyone who scans one of your cards sees. You can choose a public name once."
-              : "Anyone who scans one of your cards sees this name in its history."}
+            This is what anyone who scans one of your cards sees. You can choose a public name once.
           </p>
         )}
         {error && (
