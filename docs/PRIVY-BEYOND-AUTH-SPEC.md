@@ -151,6 +151,8 @@ User di /collection (tab Exported)
 
 **Kenapa backend tidak bisa melakukan ini sendiri:** kartu dipegang wallet user. Hanya pemiliknya yang bisa memindahkan. Ini bukan keterbatasan, ini buktinya. Demo sebaiknya menunjukkan bahwa admin console **tidak punya** tombol untuk menarik kartu kembali.
 
+> *Catatan, 12 Oktober 2026:* kalimat di atas tidak lagi benar, dengan dua alasan. Pertama, sejak delegasi Privy ada, server **bisa** mengirim dari wallet user selama user mengizinkan; itulah yang membuat import bekerja, dan Withdraw access mencabutnya. Kedua, terlepas dari delegasi, `marketplaceTransfer` di kontrak adalah fungsi owner tanpa tanda tangan pemegang, sehingga kunci admin bisa memindahkan kartu Digital dari alamat mana pun (ADR-036). Demo dan jawaban bounty sekarang mengatakan hal itu apa adanya; lihat `PRIVY-DEMO-RUNBOOK.md` Bagian D.
+
 **Verifikasi pakai `balanceOf`, bukan pemindaian event.** Draf pertama spec ini meminta pemindaian `TransferSingle` yang di-anchor ke block klaim. Itu warisan dari desain lama, ketika backend harus mendeteksi transfer yang tidak ia mulai sendiri. Sekarang kita yang mengirim transfernya dan memegang hash-nya, jadi satu pembacaan `balanceOf(custodialWallet, tokenId)` lebih murah daripada paginasi log dan lebih kuat sebagai bukti daripada event yang cocok: kartu baru benar-benar kembali kalau custodial wallet memang memegangnya.
 
 `exportClaimBlock` tetap disimpan sebagai provenance klaim, tapi tidak lagi menopang apa pun. Kalau transaksi import terkonfirmasi sementara `balanceOf` masih nol, status ditandai `unverified` dan tidak dinaikkan jadi Digital, karena yang menentukan adalah kondisi chain, bukan tanda terima transaksi.
