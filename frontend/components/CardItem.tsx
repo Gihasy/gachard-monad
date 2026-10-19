@@ -96,6 +96,26 @@ export default function CardItem({
   const isInProgress = currentStatus === "In Progress";
   const isShipping = currentStatus === "Shipping";
   const isPhysical = currentStatus === "Physical";
+  // Demo mode: no physical card is printed yet, so the owner of a claimed card
+  // reads the code here instead of under a scratch-off (ADR-007 amendment).
+  const [redeemCode, setRedeemCode] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [loadingCode, setLoadingCode] = useState(false);
+  const showRedeemCode = async () => {
+    if (tokenId === null) return;
+    setLoadingCode(true);
+    setCodeError(null);
+    try {
+      const r = await fetch(`/api/cards/${tokenId}/redeem-code`, { credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.code) setRedeemCode(d.code);
+      else setCodeError(d.error || "Could not load the code.");
+    } catch {
+      setCodeError("Network error. Try again.");
+    } finally {
+      setLoadingCode(false);
+    }
+  };
   const isExported = currentStatus === "In Your Wallet";
   /**
    * Sent to an address outside Gachard. Every action is already off, because
@@ -441,6 +461,37 @@ export default function CardItem({
                   <p className="text-[0.6rem] text-center" style={{ color: "var(--aurora-pink)" }}>
                     {claimError}
                   </p>
+                )}
+              </div>
+            )}
+            {isPhysical && tokenId !== null && (
+              <div className="space-y-1.5" data-testid={`redeem-code-panel-${tokenId}`}>
+                {redeemCode ? (
+                  <div
+                    className="text-center py-2 rounded-lg"
+                    style={{ background: "rgba(255,196,102,0.08)", border: "1px dashed rgba(255,196,102,0.4)" }}
+                  >
+                    <p className="text-[0.55rem] uppercase tracking-widest text-white/45">Redeem code</p>
+                    <p className="font-mono text-sm tracking-wider" style={{ color: "var(--aurora-gold)" }} data-testid={`redeem-code-${tokenId}`}>
+                      {redeemCode}
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    onClick={showRedeemCode}
+                    disabled={loadingCode}
+                    className="w-full py-2 rounded-lg text-[0.65rem] font-medium uppercase tracking-widest transition-all disabled:opacity-50 hover:brightness-110"
+                    style={{ background: "rgba(255,196,102,0.1)", border: "1px solid rgba(255,196,102,0.35)", color: "var(--aurora-gold)" }}
+                    data-testid={`show-redeem-code-${tokenId}`}
+                  >
+                    {loadingCode ? "Loading…" : "Show redeem code"}
+                  </button>
+                )}
+                <p className="text-[0.55rem] text-white/40 text-center leading-relaxed">
+                  Demo: on a real card this code is under the scratch-off. Enter it with the Card ID in Redeem on your profile.
+                </p>
+                {codeError && (
+                  <p className="text-[0.6rem] text-center" style={{ color: "var(--aurora-pink)" }}>{codeError}</p>
                 )}
               </div>
             )}

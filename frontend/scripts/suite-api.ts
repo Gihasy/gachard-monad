@@ -7,6 +7,7 @@ import { createHmac } from "crypto";
 import { ethers } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
+import { encrypt } from "../lib/crypto";
 
 for (const l of fs.readFileSync(path.resolve(__dirname, "../.env.local"), "utf-8").split("\n")) {
   const t = l.trim(); if (!t || t.startsWith("#")) continue;
@@ -751,6 +752,49 @@ function group(title: string) { results.push(`\n${title}`); }
     await db.collection("users").deleteOne({ _id: strangerId });
     await db.collection("rate_limits").deleteMany({ userId: { $in: [uid, strangerId.toString()] } });
     await db.collection("cards").deleteMany({ cardId: "suite-print" });
+  }
+
+  group("R. Redeem code for the owner of a claimed card (demo, 19 October)");
+  {
+    const TOKEN = 970210;
+    const CODE = "SUITE-CODE-" + Date.now();
+    await db.collection("cards").deleteMany({ cardId: "suite-claimed" });
+    await db.collection("cards").insertOne({
+      cardId: "suite-claimed", tokenId: TOKEN, templateId: tpl[0].templateId, rarity: 0,
+      ownerAddress: OWNER, status: "Vaulted", fulfillmentStatus: "Shipping", isListed: false, viewed: true, createdAt: now,
+    });
+    await db.collection("redeem_codes").insertOne({ tokenId: TOKEN, txId: "suite-redeem-tx", codeEncrypted: encrypt(CODE), status: "active", createdAt: now });
+    await db.collection("rate_limits").deleteMany({ userId: uid });
+
+    check("without a session, the code is refused", (await get(`/api/cards/${TOKEN}/redeem-code`)).status === 401);
+    const early = await get(`/api/cards/${TOKEN}/redeem-code`, session);
+    check("before the shipment is claimed, the owner is refused", early.status === 400, String(early.status));
+
+    await db.collection("cards").updateOne({ cardId: "suite-claimed" }, { $set: { status: "Real", fulfillmentStatus: "Real" } });
+    const ok = await get(`/api/cards/${TOKEN}/redeem-code`, session);
+    const okBody = await ok.json();
+    check("after the claim, the owner gets the code", ok.status === 200 && okBody.code === CODE, String(ok.status));
+    check("and the response is not cached", (ok.headers.get("cache-control") ?? "").includes("no-store"));
+
+    const otherId = new ObjectId();
+    await db.collection("users").insertOne({
+      _id: otherId, email: "suite-peek@gachard.test", username: "suite-peek",
+      walletAddress: ethers.Wallet.createRandom().address, crystalBalance: 0, createdAt: now,
+    });
+    const ots = Math.floor(Date.now() / 1000);
+    const opl = `${otherId.toString()}.${ots}`;
+    const otherSession = `gachard_session=${opl}.${createHmac("sha256", Buffer.from(process.env.ENCRYPTION_SECRET_KEY!, "utf8")).update(opl).digest("hex")}`;
+    const peek = await get(`/api/cards/${TOKEN}/redeem-code`, otherSession);
+    check("another account cannot read someone else's code", peek.status === 403, String(peek.status));
+
+    await db.collection("redeem_codes").updateMany({ tokenId: TOKEN }, { $set: { status: "claimed" } });
+    const used = await get(`/api/cards/${TOKEN}/redeem-code`, session);
+    check("a used code is not handed out again", used.status === 404, String(used.status));
+
+    await db.collection("users").deleteOne({ _id: otherId });
+    await db.collection("rate_limits").deleteMany({ userId: { $in: [uid, otherId.toString()] } });
+    await db.collection("redeem_codes").deleteMany({ tokenId: TOKEN });
+    await db.collection("cards").deleteMany({ cardId: "suite-claimed" });
   }
 
   // ---- cleanup ----
