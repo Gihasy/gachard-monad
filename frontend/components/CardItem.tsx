@@ -487,9 +487,6 @@ export default function CardItem({
                     {loadingCode ? "Loading…" : "Show redeem code"}
                   </button>
                 )}
-                <p className="text-[0.55rem] text-white/40 text-center leading-relaxed">
-                  Demo: on a real card this code is under the scratch-off. Enter it with the Card ID in Redeem on your profile.
-                </p>
                 {codeError && (
                   <p className="text-[0.6rem] text-center" style={{ color: "var(--aurora-pink)" }}>{codeError}</p>
                 )}

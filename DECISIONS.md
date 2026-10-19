@@ -63,7 +63,7 @@ Note what the exception is not: it appears only *after* the user has moved a car
 
 The redeem code is the bearer credential for a physical card and lives under a scratch-off. No physical card has been printed yet, so a judge who requested a print, advanced it (ADR-032, 19 October amendment) and claimed the shipment could never redeem: the code existed only in the database and the admin console.
 
-**Decision**: `GET /api/cards/[tokenId]/redeem-code` returns the code, decrypted, to a signed-in user who owns the card, only once the card is Real (the shipment has been claimed), and only while the code is unused. The owner's card shows a "Show redeem code" button with a note that on a real card the code is under the scratch-off. Rate limited; responses are not cached.
+**Decision**: `GET /api/cards/[tokenId]/redeem-code` returns the code, decrypted, to a signed-in user who owns the card, only once the card is Real (the shipment has been claimed), and only while the code is unused. The owner's card shows a "Show redeem code" button. Rate limited; responses are not cached.
 
 **Cost, accepted for testnet only**: the owner learns the code digitally. Someone who later hands the physical card to another person still knows its code and could redeem it first, which the scratch-off exists to prevent. That is harmless while no physical card exists. It must be switched off before real cards are printed.
 
