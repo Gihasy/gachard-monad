@@ -422,7 +422,7 @@ All blockchain transactions are verifiable on Monad Explorer:
 cd frontend && npx tsx scripts/suite-api.ts    # needs a server running
 ```
 
-134 checks over authentication boundaries, the public marketplace response, the
+144 checks over authentication boundaries, the public marketplace response, the
 public admin tier, logout, redeem, the EIP-712 batch signature, rate limits,
 reconciliation, Privy binding, stuck marketplace purchases, released cards,
 scanned QR payloads, public names and the stuck-in-flight panel. It

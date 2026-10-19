@@ -44,6 +44,16 @@ const ADMIN_PRIVATE = [
   "/api/admin/creator-applications",
 ];
 
+/**
+ * State-changing admin routes that a card's owner may also call.
+ *
+ * The proxy cannot tell who owns a card, so it lets these through and the
+ * route decides: an unlocked admin may act on any card, a signed-in owner on
+ * their own, and everyone else is refused. Added 19 October 2026 so judges can
+ * walk their own card through the print queue without the admin password.
+ */
+const OWNER_OR_ADMIN = ["/api/admin/fulfillment"];
+
 const PROTECTED = ["/collection", "/profile", "/topup", "/wallet"];
 
 // Public API routes that don't require authentication
@@ -245,6 +255,11 @@ export async function proxy(req: NextRequest) {
     // routes answer both audiences: the flow is public, the people in it are
     // not.
     if (!holdsPersonalData && !changesState) {
+      return NextResponse.next({ request: { headers } });
+    }
+
+    // Owner-or-admin routes enforce their own rule, using the header set above.
+    if (!holdsPersonalData && OWNER_OR_ADMIN.includes(pathname)) {
       return NextResponse.next({ request: { headers } });
     }
 

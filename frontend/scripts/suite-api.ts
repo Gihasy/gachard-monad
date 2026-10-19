@@ -691,6 +691,68 @@ function group(title: string) { results.push(`\n${title}`); }
     check("once settled, they leave the panel", !after.rows.some((x: { txHash: string | null; cardId: string | null }) => [H_STUCK, H_PEND].includes(x.txHash ?? "") || x.cardId === "suite-p1"));
   }
 
+  group("Q. Print queue: owner or admin (19 October)");
+  {
+    const TOKEN = 970200;
+    await db.collection("cards").deleteMany({ cardId: "suite-print" });
+    await db.collection("cards").insertOne({
+      cardId: "suite-print", tokenId: TOKEN, templateId: tpl[0].templateId, rarity: 0,
+      ownerAddress: OWNER, status: "Vaulted", fulfillmentStatus: "Locked", isListed: false, viewed: true, createdAt: now,
+    });
+    await db.collection("transactions").insertOne({
+      userId: uid, type: "print", tokenId: TOKEN, tokenIds: [TOKEN], status: "confirmed", txHash: null, createdAt: now,
+    });
+    await db.collection("rate_limits").deleteMany({ userId: uid });
+
+    // A stranger with no session.
+    const anon = await post("/api/admin/fulfillment", { tokenId: TOKEN, action: "Processing" });
+    check("without a session, the print queue refuses", anon.status === 401, String(anon.status));
+
+    // Another signed-in account that does not own the card.
+    const strangerId = new ObjectId();
+    await db.collection("users").insertOne({
+      _id: strangerId, email: "suite-stranger@gachard.test", username: "suite-stranger",
+      walletAddress: ethers.Wallet.createRandom().address, crystalBalance: 0, createdAt: now,
+    });
+    const sts = Math.floor(Date.now() / 1000);
+    const spl = `${strangerId.toString()}.${sts}`;
+    const strangerSession = `gachard_session=${spl}.${createHmac("sha256", Buffer.from(process.env.ENCRYPTION_SECRET_KEY!, "utf8")).update(spl).digest("hex")}`;
+    const other = await post("/api/admin/fulfillment", { tokenId: TOKEN, action: "Processing" }, strangerSession);
+    check("another account cannot advance someone else's card", other.status === 403, String(other.status));
+
+    const listAnon = await (await get("/api/admin/print-requests")).json();
+    const rowAnon = (listAnon.printRequests ?? []).find((x: { tokenId: number }) => x.tokenId === TOKEN);
+    check("an anonymous viewer is not told the card is theirs", rowAnon?.mine === false, JSON.stringify(rowAnon?.mine));
+    const listOwner = await (await get("/api/admin/print-requests", session)).json();
+    const rowOwner = (listOwner.printRequests ?? []).find((x: { tokenId: number }) => x.tokenId === TOKEN);
+    check("the owner is told the card is theirs", rowOwner?.mine === true, JSON.stringify(rowOwner?.mine));
+    check("and still receives none of the personal fields", rowOwner !== undefined && !("user" in rowOwner) && !("redeemCode" in rowOwner));
+
+    const own = await post("/api/admin/fulfillment", { tokenId: TOKEN, action: "Processing" }, session);
+    check("the owner can advance their own card", own.status === 200, String(own.status));
+    check("and the queue moved", (await db.collection("cards").findOne({ cardId: "suite-print" }))?.fulfillmentStatus === "Processing");
+
+    const skip = await post("/api/admin/fulfillment", { tokenId: TOKEN, action: "Shipping" }, session);
+    check("the owner still cannot skip a step", skip.status === 400, String(skip.status));
+
+    if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
+      const basic = "Basic " + Buffer.from(`${process.env.ADMIN_USERNAME}:${process.env.ADMIN_PASSWORD}`).toString("base64");
+      const asAdmin = await fetch(`${BASE}/api/admin/fulfillment`, {
+        method: "POST", headers: { "content-type": "application/json", authorization: basic },
+        body: JSON.stringify({ tokenId: TOKEN, action: "Printed" }),
+      });
+      check("an admin can still advance any card", asAdmin.status === 200, String(asAdmin.status));
+    }
+
+    // Other state-changing admin routes stay admin-only.
+    const confirmAll = await post("/api/admin/confirm-all", {}, session);
+    check("confirm-all stays admin-only for a signed-in user", confirmAll.status === 401, String(confirmAll.status));
+
+    await db.collection("users").deleteOne({ _id: strangerId });
+    await db.collection("rate_limits").deleteMany({ userId: { $in: [uid, strangerId.toString()] } });
+    await db.collection("cards").deleteMany({ cardId: "suite-print" });
+  }
+
   // ---- cleanup ----
   await db.collection("cards").deleteMany({ cardId: { $regex: "^suite-" } });
   await db.collection("cards").deleteMany({ ownerAddress: OWNER });

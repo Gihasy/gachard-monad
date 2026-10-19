@@ -4,6 +4,7 @@ import { getCollection } from "@/lib/mongodb";
 import { decrypt } from "@/lib/crypto";
 import { generateInvoiceId } from "@/lib/invoice";
 import { adminOnly, isUnlockedAdmin } from "@/lib/admin-tier";
+import { getAuthenticatedUser } from "@/lib/session";
 
 /**
  * List print requests. Public as far as the flow goes; private as far as the
@@ -25,6 +26,11 @@ import { adminOnly, isUnlockedAdmin } from "@/lib/admin-tier";
  */
 export async function GET(request: Request) {
   const unlocked = isUnlockedAdmin(request);
+  // Who is looking, so each row can say whether it is theirs to advance. A
+  // boolean about the viewer, not a fact about the owner: it reveals nothing
+  // to anyone who does not already own the card.
+  const viewer = unlocked ? null : await getAuthenticatedUser(request);
+  const viewerWallet = typeof viewer?.walletAddress === "string" ? viewer.walletAddress.toLowerCase() : null;
 
   try {
     const txCollection = await getCollection("transactions");
@@ -134,6 +140,10 @@ export async function GET(request: Request) {
                 fulfillmentStatus: card.fulfillmentStatus || null,
               }
             : null,
+          mine:
+            !!viewerWallet &&
+            typeof card?.ownerAddress === "string" &&
+            card.ownerAddress.toLowerCase() === viewerWallet,
           txStatus: tx.status,
           createdAt: tx.createdAt,
           updatedAt: tx.updatedAt,

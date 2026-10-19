@@ -359,6 +359,14 @@ The admin console follows the same rule through `adminLabel()`: the public name,
 
 The rule this leaves, sharper than the one above: **a field derived from personal data is personal data.** Check what a public field is made of, not just what it is called.
 
+**Amendment, 19 October 2026: a card's owner may advance their own print request.**
+
+Every state-changing admin route needed the admin password, `/api/admin/fulfillment` included, because it advances a card through the print queue on nothing but a tokenId. That kept strangers out, and it also kept judges out: a judge could request a print but never walk the card through the queue, and clicking the button in the public console produced a bare "Admin credentials required." alert.
+
+**Decision**: `/api/admin/fulfillment` now answers two callers. An unlocked admin may advance any card, as before. The signed-in owner of a card may advance that card only, checked by comparing `card.ownerAddress` with the session's wallet. Everyone else is refused: 401 without a session, 403 for someone else's card. The proxy lets this one route through (`OWNER_OR_ADMIN` in `proxy.ts`) so the route can make the owner check, which the proxy cannot. The transition rules are unchanged, so an owner cannot skip a step, and the final step to Real still happens only when the shipment is claimed.
+
+`/api/admin/print-requests` adds a `mine` boolean per row. It is a fact about the viewer, not the owner, so it reveals nothing to anyone who does not already own the card, and the personal fields stay withheld. In the console, a row the viewer cannot advance says who can and offers the admin unlock, instead of sending a request that fails. Confirm All and Fix Claimed Cards open the unlock dialog when the console is locked; both stay admin-only.
+
 **Note, 23 September 2026: the gate moved from `middleware.ts` to `proxy.ts`.**
 
 Next 16 deprecated the `middleware` file convention and renamed it to `proxy`, and the build said so on every deploy. The file was renamed and the exported function with it; `config.matcher` is untouched. Nothing above changes — this is the same gate under the name the framework now uses, and everything this ADR says about it still holds.

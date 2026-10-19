@@ -72,6 +72,8 @@ type PrintRequest = {
   user: { email: string; name: string; walletAddress: string } | null;
   card: { cardId: string | null; claimId: string | null; status: string; rarity: number; templateId: string; fulfillmentStatus: string | null } | null;
   redeemer?: { name: string; walletAddress: string } | null;
+  /** True when the signed-in viewer owns the card, so they may advance it. */
+  mine?: boolean;
   txStatus: string;
   createdAt: string;
   updatedAt: string;
@@ -596,6 +598,8 @@ export default function AdminPage() {
   const newPrintRequests = prints.filter((p) => (p.card?.fulfillmentStatus || p.fulfillmentStatus) === "Locked").length;
 
   const handleConfirmAll = async () => {
+    // Sends from the admin wallet; ask for the password instead of failing.
+    if (locked) return setUnlockOpen(true);
     setConfirmingAll(true);
     try {
       await fetch("/api/admin/confirm-all", { method: "POST", credentials: "include" });
@@ -801,6 +805,7 @@ export default function AdminPage() {
               <div className="mb-4">
                 <button
                   onClick={async () => {
+                    if (locked) return setUnlockOpen(true);
                     const res = await fetch("/api/admin/fix-claimed-cards", { method: "POST", credentials: "include" });
                     const data = await res.json();
                     alert(data.fixed !== undefined ? `Fixed ${data.fixed} card(s)` : data.error || "Failed");
@@ -846,7 +851,7 @@ export default function AdminPage() {
                 total={prints.length}
                 filtered={filteredPrints.length}
               />
-              <PrintRequestsTable prints={filteredPrints} onAccept={fetchAll} />
+              <PrintRequestsTable prints={filteredPrints} onAccept={fetchAll} locked={locked} onUnlock={() => setUnlockOpen(true)} />
             </>
           )}
           {tab === "health" && (
@@ -1457,12 +1462,25 @@ const FULFILLMENT_ACTIONS: Record<string, { label: string; next: string }> = {
   Shipping: { label: "Awaiting User Claim", next: "" },
 };
 
-function PrintRequestsTable({ prints, onAccept }: { prints: PrintRequest[]; onAccept: () => void }) {
+function PrintRequestsTable({
+  prints,
+  onAccept,
+  locked,
+  onUnlock,
+}: {
+  prints: PrintRequest[];
+  onAccept: () => void;
+  locked: boolean;
+  onUnlock: () => void;
+}) {
   const [processing, setProcessing] = useState<number | null>(null);
   const [trackingInput, setTrackingInput] = useState<Record<number, string>>({});
+  // A refusal shown under its own card, instead of a browser alert.
+  const [rowError, setRowError] = useState<Record<number, string>>({});
 
   const handleFulfillment = async (tokenId: number, action: string) => {
     setProcessing(tokenId);
+    setRowError((p) => ({ ...p, [tokenId]: "" }));
     try {
       const body: Record<string, unknown> = { tokenId, action };
       if (action === "Shipping") body.trackingNumber = trackingInput[tokenId] || "";
@@ -1473,8 +1491,13 @@ function PrintRequestsTable({ prints, onAccept }: { prints: PrintRequest[]; onAc
         body: JSON.stringify(body),
       });
       if (res.ok) onAccept();
-      else { const data = await res.json(); alert(data.error || "Action failed"); }
-    } catch { alert("Network error"); }
+      else {
+        const data = await res.json().catch(() => ({}));
+        setRowError((p) => ({ ...p, [tokenId]: data.error || "Action failed" }));
+      }
+    } catch {
+      setRowError((p) => ({ ...p, [tokenId]: "Network error. Try again." }));
+    }
     finally { setProcessing(null); }
   };
 
@@ -1612,7 +1635,17 @@ function PrintRequestsTable({ prints, onAccept }: { prints: PrintRequest[]; onAc
                     className="w-full mb-2 px-3 py-2 rounded-xl text-xs bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 outline-none focus:border-white/30"
                   />
                 )}
-                {action && action.next && pr.tokenId !== null && (
+                {/* An admin, or the card's owner, can advance it. Everyone else is
+                    told who can, rather than sent into a request that fails. */}
+                {action && action.next && pr.tokenId !== null && locked && !pr.mine && (
+                  <div className="text-[0.68rem] text-white/45 leading-relaxed" data-testid={`print-action-locked-${pr.tokenId}`}>
+                    Only the card&apos;s owner or an admin can advance this.{" "}
+                    <button onClick={onUnlock} className="underline underline-offset-2 text-white/70 hover:text-white">
+                      Unlock as admin
+                    </button>
+                  </div>
+                )}
+                {action && action.next && pr.tokenId !== null && (!locked || pr.mine) && (
                   <button
                     onClick={() => handleFulfillment(pr.tokenId!, action.next)}
                     disabled={processing === pr.tokenId}
@@ -1628,6 +1661,12 @@ function PrintRequestsTable({ prints, onAccept }: { prints: PrintRequest[]; onAc
                   >
                     {processing === pr.tokenId ? "Processing..." : action.label}
                   </button>
+                )}
+                {locked && pr.mine && action && action.next && (
+                  <p className="text-[0.62rem] text-white/40 mt-2">Your card. You can advance it yourself.</p>
+                )}
+                {pr.tokenId !== null && rowError[pr.tokenId] && (
+                  <p className="text-[0.68rem] mt-2" style={{ color: "var(--aurora-pink)" }}>{rowError[pr.tokenId]}</p>
                 )}
 
               </div>
