@@ -1559,6 +1559,9 @@ function PrintRequestsTable({
                       {pr.user.walletAddress.slice(0, 10)}...{pr.user.walletAddress.slice(-6)}
                     </p>
                   </>
+                ) : !("user" in pr) ? (
+                  // Withheld from a locked console, not missing (ADR-032).
+                  <Withheld label="User locked" />
                 ) : <p className="text-xs text-white/40">Unknown user</p>}
               </div>
 
@@ -1593,6 +1596,8 @@ function PrintRequestsTable({
                     <p>{pr.shippingAddress.city}, {pr.shippingAddress.postalCode}</p>
                     <p className="text-white/50">{pr.shippingAddress.phone}</p>
                   </div>
+                ) : !("shippingAddress" in pr) ? (
+                  <Withheld label="Address locked" />
                 ) : <p className="text-xs text-white/40">No address</p>}
               </div>
 

@@ -797,6 +797,32 @@ function group(title: string) { results.push(`\n${title}`); }
     await db.collection("cards").deleteMany({ cardId: "suite-claimed" });
   }
 
+  group("S. Claim shipping accepts the code");
+  {
+    const TOKEN = 970240;
+    const CLAIM = "suiteclm" + Date.now().toString(16).slice(-6);
+    await db.collection("cards").deleteMany({ cardId: "suite-ship" });
+    await db.collection("cards").insertOne({
+      cardId: "suite-ship", tokenId: TOKEN, templateId: tpl[0].templateId, rarity: 0, claimId: CLAIM,
+      ownerAddress: OWNER, status: "Vaulted", fulfillmentStatus: "Shipping", isListed: false, viewed: true, createdAt: now,
+    });
+    await db.collection("redeem_codes").insertOne({ tokenId: TOKEN, txId: "suite-ship-tx", codeEncrypted: encrypt("SUITE-SHIP"), status: "active", createdAt: now });
+    await db.collection("rate_limits").deleteMany({ userId: uid });
+
+    const claim = await post("/api/claim-shipping", { claimId: CLAIM }, session);
+    check("the owner can claim the shipment", claim.status === 200, String(claim.status));
+    const after = await db.collection("cards").findOne({ cardId: "suite-ship" });
+    check("the card becomes Real", after?.status === "Real");
+    const code = await db.collection("redeem_codes").findOne({ tokenId: TOKEN });
+    check("and its code is marked accepted", code?.status === "accepted", String(code?.status));
+    const shown = await get(`/api/cards/${TOKEN}/redeem-code`, session);
+    check("an accepted code is still shown to the owner", shown.status === 200 && (await shown.json()).code === "SUITE-SHIP");
+
+    await db.collection("rate_limits").deleteMany({ userId: uid });
+    await db.collection("redeem_codes").deleteMany({ tokenId: TOKEN });
+    await db.collection("cards").deleteMany({ cardId: "suite-ship" });
+  }
+
   // ---- cleanup ----
   await db.collection("cards").deleteMany({ cardId: { $regex: "^suite-" } });
   await db.collection("cards").deleteMany({ ownerAddress: OWNER });

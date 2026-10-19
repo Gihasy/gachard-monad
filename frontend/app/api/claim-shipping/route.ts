@@ -62,6 +62,15 @@ export async function POST(request: Request) {
       }
     );
 
+    // The card has been delivered and accepted, so its code is too. The admin
+    // path to Real (/api/admin/fulfillment) already did this; claiming did not,
+    // and the console showed a delivered card with its code still "active".
+    // Only an unused code moves: a claimed one stays claimed.
+    await (await getCollection("redeem_codes")).updateMany(
+      { tokenId: card.tokenId, status: "active" },
+      { $set: { status: "accepted", acceptedAt: new Date().toISOString() } }
+    );
+
     // Record transaction for history
     const txCollection = await getCollection("transactions");
     await txCollection.insertOne({
